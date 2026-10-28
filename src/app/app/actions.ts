@@ -51,6 +51,8 @@ const reservationSchema = z.object({
   place: z.union([z.literal(""), z.string().regex(/^[tc]:[0-9a-f-]{36}$/)]).optional(),
   sendEmail: z.literal("on").optional(),
   outsideHours: z.literal("on").optional(),
+  remember: z.literal("on").optional(),
+  marketing: z.literal("on").optional(),
 });
 
 /** Why a time can't be booked: a closure day, or outside the day's opening hours. Null when it's fine. */
@@ -81,7 +83,7 @@ export async function saveReservation(_: ActionResult, data: FormData): Promise<
   const raw = Object.fromEntries(data);
   const parsed = reservationSchema.safeParse({ ...raw, id: raw.id || undefined, guestEmail: String(raw.guestEmail ?? "").trim() });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { id, sendEmail, place, outsideHours, ...rest } = parsed.data;
+  const { id, sendEmail, place, outsideHours, remember, marketing, ...rest } = parsed.data;
   if (!outsideHours) {
     const problem = await outsideOpening(restaurant.id, rest.date, rest.time);
     if (problem) return { error: `${problem} Se vuoi inserirla comunque, spunta «Accetta anche fuori orario».` };
@@ -91,8 +93,8 @@ export async function saveReservation(_: ActionResult, data: FormData): Promise<
     ...rest,
     tableId: place?.startsWith("t:") ? place.slice(2) : null,
     combinationId: place?.startsWith("c:") ? place.slice(2) : null,
-    // Re-matched on every save, so adding a phone number links the booking to the guest's profile.
-    guestId: await guestFor(db, restaurant.id, rest),
+    // Re-matched on every save. A profile is created only if staff tick that the guest agreed to be remembered.
+    guestId: await guestFor(db, restaurant, rest, { profile: remember === "on", marketing: remember === "on" && marketing === "on", source: "staff" }),
   };
 
   if (fields.tableId || fields.combinationId) {

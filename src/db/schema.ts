@@ -243,8 +243,12 @@ export const zoneClosures = pgTable(
   (t) => [uniqueIndex("zone_closures_unique_idx").on(t.restaurantId, t.zoneName, t.date)],
 );
 
+// How a consent was given: ticked online by the guest, recorded by staff after asking, or from the guest's
+// private link.
+export const consentSource = pgEnum("consent_source", ["online", "staff", "guest_link"]);
+
 /**
- * A guest of one restaurant, built up booking after booking. Matched by normalised phone or by email, so the
+ * A guest of one restaurant, built up booking after booking — only if the guest agreed to be remembered. Matched by normalised phone or by email, so the
  * same person booking online and by phone is one profile. Belongs to the restaurant, never shared.
  */
 export const guests = pgTable(
@@ -266,6 +270,12 @@ export const guests = pgTable(
     // "MM-DD", empty when unknown.
     birthday: text("birthday").notNull().default(""),
     anniversary: text("anniversary").notNull().default(""),
+    // When the guest agreed to be remembered. Null: no consent (a profile from before consent existed),
+    // which the app keeps switched off until consent is recorded or the profile is deleted.
+    profileConsentAt: timestamp("profile_consent_at", { withTimezone: true }),
+    profileConsentSource: consentSource("profile_consent_source"),
+    // Agreed to receive offers and news from the restaurant. Separate from the profile, never assumed.
+    marketingConsentAt: timestamp("marketing_consent_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -275,6 +285,41 @@ export const guests = pgTable(
     index("guests_email_idx").on(t.restaurantId, t.email),
   ],
 );
+
+export const consentKind = pgEnum("consent_kind", ["profile", "marketing"]);
+export const consentAction = pgEnum("consent_action", ["granted", "withdrawn"]);
+
+/**
+ * Every consent given or withdrawn, with the exact wording the guest saw: GDPR asks the restaurant to be able
+ * to show when and how each guest agreed. Deleted with the guest.
+ */
+export const consentLog = pgTable(
+  "consent_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    guestId: uuid("guest_id")
+      .notNull()
+      .references(() => guests.id, { onDelete: "cascade" }),
+    kind: consentKind("kind").notNull(),
+    action: consentAction("action").notNull(),
+    source: consentSource("source").notNull(),
+    wording: text("wording").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("consent_log_guest_idx").on(t.guestId)],
+);
+
+/**
+ * One-time links emailed to a guest so they can see, download or delete what a restaurant keeps about them.
+ * Only the hash is stored; links expire after a day.
+ */
+export const guestTokens = pgTable("guest_tokens", {
+  id: text("id").primaryKey(),
+  guestId: uuid("guest_id")
+    .notNull()
+    .references(() => guests.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
 
 export const waitlistStatus = pgEnum("waitlist_status", ["waiting", "notified", "seated", "left"]);
 export const waitlistSource = pgEnum("waitlist_source", ["door", "online"]);

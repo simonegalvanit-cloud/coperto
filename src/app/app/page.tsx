@@ -5,7 +5,7 @@ import type { Reservation } from "@/db/schema";
 import { requireAccount } from "@/lib/auth";
 import { loadPlan, optionsFromPlan } from "@/lib/plan";
 import { tablesOf } from "@/lib/floor";
-import { guestInfoFor, linkUnlinked } from "@/lib/guests";
+import { guestInfoFor } from "@/lib/guests";
 import { getWaitlist } from "@/lib/waitlist";
 import { ACTIVE_STATUSES } from "@/lib/restaurant";
 import { addDays, capitalize, formatDate, isDate, nowIn, toMinutes, weekdayOf } from "@/lib/time";
@@ -21,7 +21,6 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
   const date = typeof param === "string" && isDate(param) ? param : today;
 
   const db = await getDb();
-  await linkUnlinked(restaurant.id);
   const [bookings, services, [closure], plan, stamp, waitlist] = await Promise.all([
     db
       .select()

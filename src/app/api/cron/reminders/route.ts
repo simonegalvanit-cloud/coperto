@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { cleanupRetention } from "@/lib/consent";
 import { sendDueReminders } from "@/lib/reminders";
 
 /**
@@ -12,5 +13,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const sent = await sendDueReminders();
-  return NextResponse.json({ sent });
+  const cleanup = await cleanupRetention();
+  return NextResponse.json({ sent, ...cleanup });
 }

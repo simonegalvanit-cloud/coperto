@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { requireAccount } from "@/lib/auth";
 import { isMonthDay, normalizeEmail, normalizePhone } from "@/lib/contact";
 import type { ActionResult } from "@/components/ActionForm";
+import { eraseGuest, recordStaffConsent, setMarketing } from "@/lib/consent";
+import { nowIn } from "@/lib/time";
 
 const monthDay = z.union([z.literal(""), z.string().refine(isMonthDay, "Scrivi le date come giorno e mese.")]);
 
@@ -66,20 +68,51 @@ export async function saveGuest(_: ActionResult, data: FormData): Promise<Action
 }
 
 /**
- * Forgets a guest on request (GDPR): deletes the profile and blanks the name, phone, email and notes on their
- * bookings, which stay only as anonymous numbers for the restaurant's statistics.
+ * Forgets a guest on request (GDPR): the profile and its consent records go, past bookings keep only the
+ * numbers, upcoming ones keep what's needed to welcome them.
  */
 export async function deleteGuest(data: FormData) {
   const { restaurant } = await requireAccount();
-  const id = z.uuid().parse(data.get("id"));
-  const db = await getDb();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(schema.reservations)
-      .set({ guestName: "Ospite cancellato", guestPhone: "", guestEmail: "", notes: "", guestId: null, updatedAt: new Date() })
-      .where(and(eq(schema.reservations.guestId, id), eq(schema.reservations.restaurantId, restaurant.id)));
-    await tx.delete(schema.guests).where(and(eq(schema.guests.id, id), eq(schema.guests.restaurantId, restaurant.id)));
-  });
+  await eraseGuest(restaurant.id, z.uuid().parse(data.get("id")), nowIn(restaurant.timezone).date);
   revalidatePath("/app", "layout");
   redirect("/app/ospiti");
+}
+
+/** The guest agreed, in person or on the phone, to be remembered: staff record it (it's logged with today's date). */
+export async function recordConsent(data: FormData) {
+  const { restaurant } = await requireAccount();
+  const id = z.uuid().parse(data.get("id"));
+  await recordStaffConsent(restaurant, id);
+  revalidatePath("/app", "layout");
+}
+
+export async function setGuestMarketing(data: FormData) {
+  const { restaurant } = await requireAccount();
+  const id = z.uuid().parse(data.get("id"));
+  const db = await getDb();
+  const [guest] = await db
+    .select({ id: schema.guests.id })
+    .from(schema.guests)
+    .where(and(eq(schema.guests.id, id), eq(schema.guests.restaurantId, restaurant.id)));
+  if (!guest) return;
+  await setMarketing(id, data.get("on") === "1", "staff", restaurant.name);
+  revalidatePath("/app", "layout");
+}
+
+/** Deletes the ticked profiles from the "Senza consenso" list, each the same way as a single deletion. */
+export async function deleteUnconsented(data: FormData) {
+  const { restaurant } = await requireAccount();
+  const ids = z.array(z.uuid()).max(500).parse(data.getAll("id"));
+  if (ids.length) {
+    const db = await getDb();
+    const g = schema.guests;
+    const rows = await db
+      .select({ id: g.id })
+      .from(g)
+      .where(and(eq(g.restaurantId, restaurant.id), inArray(g.id, ids), isNull(g.profileConsentAt)));
+    const today = nowIn(restaurant.timezone).date;
+    for (const r of rows) await eraseGuest(restaurant.id, r.id, today);
+  }
+  revalidatePath("/app", "layout");
+  redirect("/app/ospiti/senza-consenso");
 }

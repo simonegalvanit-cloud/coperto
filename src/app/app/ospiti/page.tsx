@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, isNotNull, isNull, or } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { requireAccount } from "@/lib/auth";
 import { formatPhone, normalizePhone } from "@/lib/contact";
-import { guestCounts, linkUnlinked } from "@/lib/guests";
+import { guestCounts } from "@/lib/guests";
 import { formatDate } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Ospiti" };
@@ -14,23 +14,26 @@ const PAGE = 100;
 export default async function GuestsPage({ searchParams }: PageProps<"/app/ospiti">) {
   const { restaurant } = await requireAccount();
   const q = String((await searchParams).q ?? "").trim().slice(0, 80);
-  await linkUnlinked(restaurant.id);
 
   const db = await getDb();
   const g = schema.guests;
   const like = `%${q.replace(/[%_\\]/g, "\\$&")}%`;
   const phone = normalizePhone(q);
-  const guests = await db
+  const [guests, [{ legacy }]] = await Promise.all([
+    db
     .select()
     .from(g)
     .where(
       and(
         eq(g.restaurantId, restaurant.id),
+        isNotNull(g.profileConsentAt),
         q ? or(ilike(g.name, like), ilike(g.email, like), phone ? ilike(g.phone, `%${phone.slice(-7)}%`) : undefined) : undefined,
       ),
     )
     .orderBy(desc(g.updatedAt))
-    .limit(PAGE);
+    .limit(PAGE),
+    db.select({ legacy: count() }).from(g).where(and(eq(g.restaurantId, restaurant.id), isNull(g.profileConsentAt))),
+  ]);
   const counts = await guestCounts(restaurant.id, guests.map((x) => x.id));
 
   return (
@@ -41,13 +44,23 @@ export default async function GuestsPage({ searchParams }: PageProps<"/app/ospit
           Esporta (CSV)
         </a>
       </div>
+      <p className="small muted">
+        Compaiono solo gli ospiti che hanno scelto di essere ricordati, prenotando online o dicendolo a voi. Chi non
+        lo sceglie prenota normalmente, ma non ha una scheda.
+      </p>
+      {legacy > 0 && (
+        <p className="panel">
+          <strong>{legacy} {legacy === 1 ? "scheda" : "schede"} senza consenso</strong>, create prima che servisse. Sono spente:
+          non compaiono sulle prenotazioni. <Link href="/app/ospiti/senza-consenso">Decidi cosa farne</Link>
+        </p>
+      )}
       <form className="row" action="/app/ospiti">
         <input className="input" style={{ flex: "1 1 260px", width: "auto" }} type="search" name="q" defaultValue={q} placeholder="Cerca per nome, telefono o email" aria-label="Cerca ospiti" />
         <button className="btn" type="submit">Cerca</button>
       </form>
       {guests.length === 0 ? (
         <div className="empty">
-          {q ? `Nessun ospite trovato per “${q}”.` : "Qui compariranno gli ospiti: si crea una scheda da sola per chiunque prenoti con telefono o email."}
+          {q ? `Nessun ospite trovato per “${q}”.` : "Qui compariranno gli ospiti che scelgono di essere ricordati: online spuntando “Ricordati di me”, oppure dicendolo a voi quando prenotano."}
         </div>
       ) : (
         <ul className="guest-list">
