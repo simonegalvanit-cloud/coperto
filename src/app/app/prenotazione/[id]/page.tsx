@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { requireAccount } from "@/lib/auth";
@@ -20,6 +20,11 @@ export default async function EditReservationPage({ params }: PageProps<"/app/pr
     .from(schema.reservations)
     .where(and(eq(schema.reservations.id, id.data), eq(schema.reservations.restaurantId, restaurant.id)));
   if (!booking) notFound();
+  const tables = await db
+    .select({ id: schema.diningTables.id, label: schema.diningTables.label, seats: schema.diningTables.seats })
+    .from(schema.diningTables)
+    .where(eq(schema.diningTables.restaurantId, restaurant.id))
+    .orderBy(asc(schema.diningTables.label));
   return (
     <>
       <div>
@@ -27,7 +32,7 @@ export default async function EditReservationPage({ params }: PageProps<"/app/pr
         <h1 style={{ marginTop: 8 }}>{booking.guestName}</h1>
       </div>
       <div className="panel">
-        <ReservationForm date={booking.date} initial={booking} />
+        <ReservationForm date={booking.date} initial={booking} tables={tables} />
       </div>
     </>
   );

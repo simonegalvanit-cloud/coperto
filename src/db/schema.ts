@@ -85,6 +85,27 @@ export const closures = pgTable(
   (t) => [uniqueIndex("closures_restaurant_date_idx").on(t.restaurantId, t.date)],
 );
 
+export const tableShape = pgEnum("table_shape", ["square", "round", "rect"]);
+
+// Positions and sizes are in floor-plan units: the room is drawn on a 1000 × 625 canvas.
+export const diningTables = pgTable(
+  "dining_tables",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    seats: integer("seats").notNull(),
+    shape: tableShape("shape").notNull(),
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+    w: integer("w").notNull(),
+    h: integer("h").notNull(),
+  },
+  (t) => [index("dining_tables_restaurant_idx").on(t.restaurantId)],
+);
+
 export const reservationStatus = pgEnum("reservation_status", [
   "confirmed",
   "seated",
@@ -112,6 +133,8 @@ export const reservations = pgTable(
     notes: text("notes").notNull().default(""),
     status: reservationStatus("status").notNull().default("confirmed"),
     source: reservationSource("source").notNull(),
+    // Removing a table from the plan keeps its bookings, just unassigned.
+    tableId: uuid("table_id").references(() => diningTables.id, { onDelete: "set null" }),
     // Secret in the guest's link to view or cancel the booking without an account.
     manageToken: text("manage_token").notNull().unique(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -123,4 +146,5 @@ export const reservations = pgTable(
 export type Restaurant = typeof restaurants.$inferSelect;
 export type ServiceHour = typeof serviceHours.$inferSelect;
 export type Reservation = typeof reservations.$inferSelect;
+export type DiningTable = typeof diningTables.$inferSelect;
 export type ReservationStatus = (typeof reservationStatus.enumValues)[number];

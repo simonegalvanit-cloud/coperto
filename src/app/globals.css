@@ -190,3 +190,49 @@ textarea.input { padding: 10px 12px; min-height: 84px; resize: vertical; }
 .ticket small { display: block; font-size: 12px; }
 .ticket strong { display: block; font-size: 18px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
 .ticket .big { font-size: 28px; letter-spacing: -0.03em; }
+
+/* Floor plan: live view and editor */
+.floor { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.floor-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.floor-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 900px) { .floor { grid-template-columns: minmax(0, 1fr); } }
+/* On phones the plan keeps a readable size and scrolls sideways inside its frame. */
+.plan-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.plan-svg { display: block; width: 100%; min-width: 620px; height: auto; border: 2px solid var(--ink); background: var(--paper); user-select: none; -webkit-user-select: none; }
+.plan-floor { fill: url(#plan-grid); }
+.plan-grid-line { stroke: var(--grid); stroke-width: 1; }
+.tb { cursor: pointer; outline: none; }
+.editing .tb { touch-action: none; cursor: grab; }
+.editing .tb:active { cursor: grabbing; }
+.tb-body { fill: var(--paper); stroke: var(--ink); stroke-width: 2.5; transition: fill 0.25s, stroke 0.25s; }
+.tb-label { fill: var(--ink); font-size: 22px; font-weight: 700; }
+.tb-line { fill: var(--ink); font-size: 17px; }
+.tb.is-free:hover .tb-body, .editing .tb:hover .tb-body { fill: #dfe4dc; }
+.tb.is-seated .tb-body { fill: var(--ink); }
+.tb.is-seated text { fill: var(--paper); }
+.tb.is-arriving .tb-body { fill: rgba(27, 42, 107, 0.1); stroke-dasharray: 8 5; stroke-width: 3; }
+.tb.is-late .tb-body { fill: rgba(155, 44, 44, 0.1); stroke: var(--alert); stroke-dasharray: 8 5; stroke-width: 3; }
+.tb.is-late text { fill: var(--alert); }
+.tb.is-selected .tb-body, .tb:focus-visible .tb-body { stroke-width: 6; }
+.editing .tb.is-selected .tb-body { stroke-dasharray: none; fill: rgba(27, 42, 107, 0.16); }
+.tb.is-fit .tb-body { stroke: var(--ok); stroke-width: 6; }
+.tb.is-dim { opacity: 0.35; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.scrub { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.scrub .clock { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; min-width: 3ch; }
+.scrub input[type="range"] { flex: 1 1 200px; min-width: 0; height: 40px; margin: 0; accent-color: var(--ink); }
+.live-tag { color: var(--ok); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 14px; height: 14px; border: 1.5px solid var(--ink); background: var(--paper); }
+.sw-seated { background: var(--ink); }
+.sw-arriving { border-style: dashed; background: rgba(27, 42, 107, 0.1); }
+.sw-late { border: 1.5px dashed var(--alert); background: rgba(155, 44, 44, 0.1); }
+.placing { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 14px; background: var(--ink); color: var(--ground); }
+.placing .btn { border-color: var(--ground); color: var(--ground); }
+.placing .btn:hover { background: var(--ground); color: var(--ink); }
+.booking-card { padding: 12px; border: 1.5px solid var(--ink); background: var(--ground); }
+.booking-card .note { padding-left: 10px; border-left: 3px solid var(--ink); }
+.party-inline { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 22px; padding: 0 6px; border: 1.5px solid var(--ink); font-size: 13px; font-weight: 700; }
+.floor-side .list-plain li { align-items: flex-start; }
+.table-tag { font-weight: 700; }
