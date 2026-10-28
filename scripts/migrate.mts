@@ -9,7 +9,8 @@ if (!url) {
   console.log("DATABASE_URL not set, skipping migrations.");
   process.exit(0);
 }
-const client = postgres(url, { max: 1 });
+// prepare: false works through Supabase's transaction pooler, which has no prepared statements.
+const client = postgres(url, { max: 1, prepare: false });
 await migrate(drizzle(client), { migrationsFolder: "drizzle" });
 await client.end();
 console.log("Migrations applied.");
