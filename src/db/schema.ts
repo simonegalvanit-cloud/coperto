@@ -53,6 +53,8 @@ export const restaurants = pgTable("restaurants", {
   minNoticeMinutes: integer("min_notice_minutes").notNull().default(60),
   maxDaysAhead: integer("max_days_ahead").notNull().default(60),
   bookingOpen: boolean("booking_open").notNull().default(true),
+  // Email guests the day before to confirm or cancel.
+  remindersEnabled: boolean("reminders_enabled").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -241,6 +243,67 @@ export const zoneClosures = pgTable(
   (t) => [uniqueIndex("zone_closures_unique_idx").on(t.restaurantId, t.zoneName, t.date)],
 );
 
+/**
+ * A guest of one restaurant, built up booking after booking. Matched by normalised phone or by email, so the
+ * same person booking online and by phone is one profile. Belongs to the restaurant, never shared.
+ */
+export const guests = pgTable(
+  "guests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // Normalised: "+393331234567". Empty when unknown.
+    phone: text("phone").notNull().default(""),
+    // Lower-case. Empty when unknown.
+    email: text("email").notNull().default(""),
+    allergies: text("allergies").notNull().default(""),
+    // Staff notes that follow the guest to every booking.
+    notes: text("notes").notNull().default(""),
+    vip: boolean("vip").notNull().default(false),
+    // "MM-DD", empty when unknown.
+    birthday: text("birthday").notNull().default(""),
+    anniversary: text("anniversary").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("guests_restaurant_idx").on(t.restaurantId),
+    index("guests_phone_idx").on(t.restaurantId, t.phone),
+    index("guests_email_idx").on(t.restaurantId, t.email),
+  ],
+);
+
+export const waitlistStatus = pgEnum("waitlist_status", ["waiting", "notified", "seated", "left"]);
+export const waitlistSource = pgEnum("waitlist_source", ["door", "online"]);
+
+/**
+ * People waiting for a table: walk-ins at the door (today), or guests who found a day full online and want
+ * an email if something frees up.
+ */
+export const waitlist = pgTable(
+  "waitlist",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    date: date("date", { mode: "string" }).notNull(),
+    name: text("name").notNull(),
+    phone: text("phone").notNull().default(""),
+    email: text("email").notNull().default(""),
+    partySize: integer("party_size").notNull(),
+    notes: text("notes").notNull().default(""),
+    source: waitlistSource("source").notNull(),
+    status: waitlistStatus("status").notNull().default("waiting"),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("waitlist_restaurant_date_idx").on(t.restaurantId, t.date)],
+);
+
 export const reservationStatus = pgEnum("reservation_status", [
   "confirmed",
   "seated",
@@ -272,6 +335,11 @@ export const reservations = pgTable(
     tableId: uuid("table_id").references(() => diningTables.id, { onDelete: "set null" }),
     // Set instead of tableId when the party sits at joined tables.
     combinationId: uuid("combination_id").references(() => tableCombinations.id, { onDelete: "set null" }),
+    // The guest's profile, matched by phone or email. Null for walk-ins without contact details.
+    guestId: uuid("guest_id").references(() => guests.id, { onDelete: "set null" }),
+    reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+    // When the guest tapped "Ci sarò" in the reminder.
+    guestConfirmedAt: timestamp("guest_confirmed_at", { withTimezone: true }),
     // Secret in the guest's link to view or cancel the booking without an account.
     manageToken: text("manage_token").notNull().unique(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -293,4 +361,6 @@ export type Zone = typeof zones.$inferSelect;
 export type Fixture = typeof fixtures.$inferSelect;
 export type FixtureKind = (typeof fixtureKind.enumValues)[number];
 export type TableCombination = typeof tableCombinations.$inferSelect;
+export type Guest = typeof guests.$inferSelect;
+export type WaitlistEntry = typeof waitlist.$inferSelect;
 export type ReservationStatus = (typeof reservationStatus.enumValues)[number];

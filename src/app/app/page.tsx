@@ -4,6 +4,8 @@ import { getDb, schema } from "@/db";
 import type { Reservation } from "@/db/schema";
 import { requireAccount } from "@/lib/auth";
 import { tableOptions } from "@/lib/plan";
+import { guestInfoFor, linkUnlinked } from "@/lib/guests";
+import { getWaitlist } from "@/lib/waitlist";
 import { ACTIVE_STATUSES } from "@/lib/restaurant";
 import { addDays, capitalize, formatDate, isDate, nowIn, toMinutes, weekdayOf } from "@/lib/time";
 import { LiveSync } from "@/components/LiveSync";
@@ -17,7 +19,8 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
   const date = typeof param === "string" && isDate(param) ? param : today;
 
   const db = await getDb();
-  const [bookings, services, [closure], tables, stamp] = await Promise.all([
+  await linkUnlinked(restaurant.id);
+  const [bookings, services, [closure], tables, stamp, waitlist] = await Promise.all([
     db
       .select()
       .from(schema.reservations)
@@ -34,7 +37,10 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
       .where(and(eq(schema.closures.restaurantId, restaurant.id), eq(schema.closures.date, date))),
     tableOptions(restaurant.id),
     changeStamp(restaurant.id),
+    getWaitlist(restaurant.id, date),
   ]);
+  const waiting = waitlist.filter((w) => w.status === "waiting" || w.status === "notified");
+  const guestInfo = await guestInfoFor(restaurant.id, bookings);
   const placeLabel = new Map(
     tables.map((t) => [t.value, `${t.combinationId ? "Tavoli" : "Tavolo"} ${t.label}${t.zone ? ` · ${t.zone}` : ""}`]),
   );
@@ -80,6 +86,19 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
         </p>
       )}
 
+      {waiting.length > 0 && (
+        <div className="panel waiting-summary">
+          <strong>In lista d’attesa ({waiting.length}):</strong>{" "}
+          {waiting.map((w, i) => (
+            <span key={w.id}>
+              {i > 0 && ", "}
+              {w.name} ({w.partySize}){w.source === "online" && " online"}
+            </span>
+          ))}
+          . <Link href={`/app/sala?data=${date}`}>Gestisci dalla Sala</Link>
+        </div>
+      )}
+
       <div className="totals">
         <div><strong>{covers(active)}</strong><span>coperti</span></div>
         <div><strong>{active.length}</strong><span>tavoli prenotati</span></div>
@@ -116,7 +135,9 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
                       notes: b.notes,
                       status: b.status,
                       source: b.source,
+                      guestConfirmedAt: b.guestConfirmedAt,
                     }}
+                    guest={guestInfo.get(b.id)}
                     table={b.tableId ? placeLabel.get(`t:${b.tableId}`) : b.combinationId ? placeLabel.get(`c:${b.combinationId}`) : undefined}
                   />
                 ))}

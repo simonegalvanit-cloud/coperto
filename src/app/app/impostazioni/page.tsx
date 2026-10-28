@@ -7,7 +7,7 @@ import { SERVICE_NAMES } from "@/lib/hours";
 import { getClosures, getServiceHours } from "@/lib/restaurant";
 import { capitalize, formatDate, nowIn, WEEKDAYS } from "@/lib/time";
 import { appUrl } from "@/lib/url";
-import { addClosure, removeClosure, saveDetails, saveHours, saveRules } from "./actions";
+import { addClosure, removeClosure, saveDetails, saveHours, saveRules, sendRemindersNow } from "./actions";
 
 export const metadata: Metadata = { title: "Impostazioni" };
 
@@ -104,6 +104,9 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/imp
           <label className="check">
             <input type="checkbox" name="bookingOpen" defaultChecked={r.bookingOpen} /> Accetta prenotazioni online
           </label>
+          <label className="check">
+            <input type="checkbox" name="remindersEnabled" defaultChecked={r.remindersEnabled} /> Manda un promemoria via email il giorno prima
+          </label>
           <div className="grid-3">
             <label className="field">
               Posti in sala <span className="hint">Conta finché non disegni il locale: poi decidono i tavoli</span>
@@ -138,6 +141,19 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/imp
               <input className="input" type="number" name="maxDaysAhead" min={1} max={365} defaultValue={r.maxDaysAhead} required />
             </label>
           </div>
+        </ActionForm>
+      </section>
+
+      <section className="panel settings-section">
+        <header>
+          <h2>Promemoria</h2>
+          <p className="muted">
+            Ogni mattina chi ha prenotato per domani riceve un’email per confermare (“Ci sarò”) o cancellare. Nell’elenco
+            prenotazioni vedi “Ci sarà” accanto a chi ha confermato.
+          </p>
+        </header>
+        <ActionForm action={sendRemindersNow} submitLabel="Invia adesso i promemoria di domani" className="stack">
+          <p className="small muted">Utile per provarli: ognuno parte una volta sola, anche se premi più volte.</p>
         </ActionForm>
       </section>
 

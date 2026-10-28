@@ -8,6 +8,7 @@ import { requireAccount } from "@/lib/auth";
 import { SERVICE_NAMES } from "@/lib/hours";
 import { isDate, isTime, toMinutes } from "@/lib/time";
 import type { ActionResult } from "@/components/ActionForm";
+import { sendDueReminders } from "@/lib/reminders";
 
 const detailsSchema = z.object({
   name: z.string().trim().min(2, "Scrivi il nome del ristorante.").max(80),
@@ -31,6 +32,7 @@ const int = (min: number, max: number, msg: string) => z.coerce.number().int(msg
 
 const rulesSchema = z.object({
   bookingOpen: z.literal("on").optional(),
+  remindersEnabled: z.literal("on").optional(),
   capacity: int(1, 2000, "I posti in sala devono essere tra 1 e 2000."),
   maxCoversPerSlot: z.union([z.literal(""), int(1, 2000, "Il limite di arrivi deve essere un numero positivo.")]),
   slotMinutes: z.coerce.number().pipe(z.union([z.literal(15), z.literal(30), z.literal(60)])),
@@ -44,11 +46,16 @@ export async function saveRules(_: ActionResult, data: FormData): Promise<Action
   const { restaurant } = await requireAccount();
   const parsed = rulesSchema.safeParse(Object.fromEntries(data));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { bookingOpen, maxCoversPerSlot, ...rest } = parsed.data;
+  const { bookingOpen, remindersEnabled, maxCoversPerSlot, ...rest } = parsed.data;
   const db = await getDb();
   await db
     .update(schema.restaurants)
-    .set({ ...rest, bookingOpen: bookingOpen === "on", maxCoversPerSlot: maxCoversPerSlot === "" ? null : maxCoversPerSlot })
+    .set({
+      ...rest,
+      bookingOpen: bookingOpen === "on",
+      remindersEnabled: remindersEnabled === "on",
+      maxCoversPerSlot: maxCoversPerSlot === "" ? null : maxCoversPerSlot,
+    })
     .where(eq(schema.restaurants.id, restaurant.id));
   revalidatePath("/app", "layout");
   return { ok: "Salvato." };
@@ -96,4 +103,14 @@ export async function removeClosure(data: FormData) {
   const db = await getDb();
   await db.delete(schema.closures).where(and(eq(schema.closures.id, id), eq(schema.closures.restaurantId, restaurant.id)));
   revalidatePath("/app", "layout");
+}
+
+/** Sends now the reminders the morning job would send for tomorrow, e.g. to try them out. */
+export async function sendRemindersNow(): Promise<ActionResult> {
+  const { restaurant } = await requireAccount();
+  if (!restaurant.remindersEnabled) return { error: "I promemoria sono disattivati: attivali e salva le regole." };
+  const sent = await sendDueReminders(restaurant);
+  return {
+    ok: sent === 0 ? "Nessun promemoria da mandare: sono già partiti tutti, o domani non ci sono prenotazioni con email." : `Inviati ${sent} promemoria.`,
+  };
 }

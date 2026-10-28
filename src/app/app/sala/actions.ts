@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
@@ -8,6 +9,10 @@ import { randomToken, requireAccount } from "@/lib/auth";
 import { autoAssign as planAssignments, tablesOf, zoneFor, type FloorBooking, type Spot } from "@/lib/floor";
 import { loadPlan } from "@/lib/plan";
 import { checkSpot } from "@/lib/spots";
+import { guestFor } from "@/lib/guests";
+import { getAvailableSlots } from "@/lib/restaurant";
+import { emailWaitlistGuest } from "@/lib/waitlist";
+import type { Restaurant } from "@/db/schema";
 import { fromMinutes, isDate, nowIn } from "@/lib/time";
 
 export type FloorResult = { error?: string; ok?: string } | null;
@@ -228,36 +233,130 @@ export async function assignTable(reservationId: string, spot: Spot, seat = fals
   return null;
 }
 
-/** Seats a party without a booking at a table, right now. */
-export async function seatWalkIn(tableId: string, partySize: number, name: string): Promise<FloorResult> {
-  const { restaurant } = await requireAccount();
+/**
+ * Seats a party at a table right now, as a walk-in booking: checks nobody is still seated there and links the
+ * guest's profile when there's a phone or email. Used for walk-ins and for people called from the waitlist.
+ */
+async function seatNow(
+  restaurant: Restaurant,
+  tableId: string,
+  party: { partySize: number; guestName: string; guestPhone?: string; guestEmail?: string; notes?: string },
+): Promise<FloorResult> {
   const table = await ownTable(restaurant.id, z.uuid().parse(tableId));
   if (!table) return { error: "Tavolo non trovato." };
-  const party = z.number().int().min(1).max(200).safeParse(partySize);
-  if (!party.success) return { error: "Quante persone?" };
+  const size = z.number().int().min(1).max(200).safeParse(party.partySize);
+  if (!size.success) return { error: "Quante persone?" };
 
   const now = nowIn(restaurant.timezone);
-  const walkIn = {
-    date: now.date,
-    time: fromMinutes(now.minutes - (now.minutes % 5)),
-    durationMinutes: restaurant.durationMinutes,
-  };
   const [day, { combos }] = await Promise.all([loadDay(restaurant.id, now.date), loadPlan(restaurant.id)]);
   // Only someone physically at the table blocks a walk-in; a later booking is the staff's call.
   const occupied = day.find((b) => b.status === "seated" && tablesOf(b, combos).includes(table.id));
   if (occupied) return { error: `Al tavolo ${table.label} è ancora seduto ${occupied.guestName}.` };
 
   const db = await getDb();
+  const contact = {
+    guestName: party.guestName.trim().slice(0, 120) || "Senza prenotazione",
+    guestPhone: (party.guestPhone ?? "").slice(0, 40),
+    guestEmail: (party.guestEmail ?? "").slice(0, 200),
+  };
   await db.insert(schema.reservations).values({
-    ...walkIn,
+    ...contact,
+    date: now.date,
+    time: fromMinutes(now.minutes - (now.minutes % 5)),
+    durationMinutes: restaurant.durationMinutes,
     restaurantId: restaurant.id,
-    partySize: party.data,
-    guestName: name.trim().slice(0, 120) || "Senza prenotazione",
+    partySize: size.data,
+    notes: (party.notes ?? "").slice(0, 1000),
     source: "walk_in",
     status: "seated",
     tableId: table.id,
+    guestId: await guestFor(db, restaurant.id, contact),
     manageToken: randomToken(),
   });
+  return null;
+}
+
+/** Seats a party without a booking at a table, right now. */
+export async function seatWalkIn(tableId: string, partySize: number, name: string): Promise<FloorResult> {
+  const { restaurant } = await requireAccount();
+  const result = await seatNow(restaurant, tableId, { partySize, guestName: name });
+  revalidatePath("/app", "layout");
+  return result;
+}
+
+// ---------- Waitlist ----------
+
+const waitSchema = z.object({
+  date: z.string().refine(isDate, "Data non valida."),
+  name: z.string().trim().min(1, "Scrivi un nome.").max(120),
+  phone: z.string().trim().max(40),
+  partySize: z.coerce.number().int().min(1, "Quante persone?").max(200),
+  notes: z.string().trim().max(300),
+});
+
+/** Adds someone at the door to the waitlist for a day. */
+export async function addToWaitlist(input: { date: string; name: string; phone: string; partySize: number; notes: string }): Promise<FloorResult> {
+  const { restaurant } = await requireAccount();
+  const parsed = waitSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const db = await getDb();
+  await db.insert(schema.waitlist).values({ ...parsed.data, restaurantId: restaurant.id, source: "door" });
+  revalidatePath("/app", "layout");
+  return null;
+}
+
+async function ownEntry(restaurantId: string, id: string) {
+  const db = await getDb();
+  const [entry] = await db
+    .select()
+    .from(schema.waitlist)
+    .where(and(eq(schema.waitlist.id, z.uuid().parse(id)), eq(schema.waitlist.restaurantId, restaurantId)));
+  return entry ?? null;
+}
+
+/**
+ * "Your table is ready": marks the entry notified and, if they left an email, tells them now. Staff call the
+ * phone number from the button the panel shows.
+ */
+export async function notifyWaitEntry(id: string): Promise<FloorResult> {
+  const { restaurant } = await requireAccount();
+  const entry = await ownEntry(restaurant.id, id);
+  if (!entry) return { error: "Non trovato in lista d’attesa." };
+  const db = await getDb();
+  await db.update(schema.waitlist).set({ status: "notified", notifiedAt: new Date() }).where(eq(schema.waitlist.id, entry.id));
+  if (entry.email) {
+    const times = await getAvailableSlots(restaurant, entry.date, entry.partySize);
+    after(() => emailWaitlistGuest(restaurant, entry, times));
+  }
+  revalidatePath("/app", "layout");
+  return null;
+}
+
+export async function leaveWaitlist(id: string): Promise<FloorResult> {
+  const { restaurant } = await requireAccount();
+  const entry = await ownEntry(restaurant.id, id);
+  if (!entry) return { error: "Non trovato in lista d’attesa." };
+  const db = await getDb();
+  await db.update(schema.waitlist).set({ status: "left" }).where(eq(schema.waitlist.id, entry.id));
+  revalidatePath("/app", "layout");
+  return null;
+}
+
+/** Seats someone from the waitlist at a table now. */
+export async function seatFromWaitlist(id: string, tableId: string): Promise<FloorResult> {
+  const { restaurant } = await requireAccount();
+  const entry = await ownEntry(restaurant.id, id);
+  if (!entry) return { error: "Non trovato in lista d’attesa." };
+  const result = await seatNow(restaurant, tableId, {
+    partySize: entry.partySize,
+    guestName: entry.name,
+    guestPhone: entry.phone,
+    guestEmail: entry.email,
+    notes: entry.notes,
+  });
+  if (result?.error) return result;
+  const db = await getDb();
+  await db.update(schema.waitlist).set({ status: "seated" }).where(eq(schema.waitlist.id, entry.id));
   revalidatePath("/app", "layout");
   return null;
 }

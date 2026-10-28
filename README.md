@@ -43,6 +43,17 @@ The rules for table states, assignment and online table availability are in `src
 the people already seated plus the new party fit in the room's seats, the optional "max arrivals per slot" isn't exceeded,
 it respects the minimum notice and booking window, and the day isn't a closure.
 
+### Stage 3, "Ospiti": guests, waitlist, reminders
+
+| Page | What it does |
+|---|---|
+| `/app/ospiti` | Every guest who booked with a phone or email gets a profile on their own; the same person typing their number differently ("333 123 4567", "+39 333-1234567") is one profile. Search, and export everything as CSV (the data is the restaurant's). |
+| `/app/ospiti/<id>` | Visits, no-shows, cancellations, usual party size, booking history; allergies, standing notes, birthday, anniversary, VIP. Delete on request (GDPR): the profile goes and the bookings keep only the numbers. |
+
+- **On every booking** (list and room view): "Nuovo" or "5ª visita", no-shows, VIP, birthday or anniversary that day, allergies in red, the guest's standing notes.
+- **Waitlist**: walk-ins added at the door with how long they've waited, "Chiama", "Avvisa", and "Fai sedere" by tapping a free table. Online, a guest who finds a day full can ask to be emailed; any cancellation or no-show emails the waiting guests whose party now fits, with a link to that day.
+- **Reminders**: every morning (Vercel Cron, `vercel.json`) guests booked for tomorrow get an email to confirm ("Ci sarò") or cancel; staff see "Ci sarà". One reminder per booking, none for bookings made in the last two hours. On/off in settings, plus a button to send them now.
+
 ## Try it on your computer
 
 You need [Node.js 22](https://nodejs.org). Then, in this folder:
@@ -72,6 +83,7 @@ and emails are printed in the terminal instead of being sent.
 | `RESEND_API_KEY` | The Resend API key |
 | `EMAIL_FROM` | e.g. `Coperto <prenotazioni@tuodominio.it>` |
 | `APP_URL` | Your public address, e.g. `https://coperto.it` |
+| `CRON_SECRET` | Any long random text: only Vercel's morning job can then trigger reminders |
 
 The app reads the database address from `DATABASE_URL`, or from `POSTGRES_URL` as set by Vercel's Supabase and Neon integrations.
 Without any of the email variables, emails are written to Vercel's logs instead of being sent.

@@ -302,3 +302,23 @@ textarea.input { padding: 10px 12px; min-height: 84px; resize: vertical; }
 .combo-outline.is-editing text { fill: var(--ink); }
 .tb.is-picked .tb-body { stroke: var(--ok); stroke-width: 6; fill: rgba(36, 97, 58, 0.15); }
 .area-list li { flex-wrap: wrap; }
+
+/* Guest markers */
+.tag-ok { color: var(--ok); }
+.note-alert { border-left-color: var(--alert); color: var(--alert); font-weight: 600; }
+.note-guest { border-left-style: dashed; }
+.note-guest::before { content: "Ospite: "; font-weight: 600; }
+.booking .name { text-decoration: none; }
+a.name:hover { text-decoration: underline; }
+.guest-list { list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--ink); }
+.guest-list li a { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 4px 16px; align-items: center; padding: 12px 4px; border-bottom: 1.5px solid var(--ink); text-decoration: none; }
+.guest-list li a:hover { background: var(--tint); }
+.guest-name { font-weight: 700; display: inline-flex; gap: 8px; align-items: center; }
+.allergy { grid-column: 1 / -1; color: var(--alert); font-weight: 600; }
+@media (max-width: 720px) { .guest-list li a { grid-template-columns: 1fr; } }
+
+/* Waitlist */
+.wait-item { flex-wrap: wrap; }
+.wait-add summary { list-style: none; display: inline-flex; }
+.wait-add summary::-webkit-details-marker { display: none; }
+.wait-add[open] summary { display: none; }

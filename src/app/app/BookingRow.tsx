@@ -5,10 +5,11 @@ import Link from "next/link";
 import type { Reservation, ReservationStatus } from "@/db/schema";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { setStatus } from "./actions";
+import type { GuestInfo } from "@/lib/guests";
 
 export type RowBooking = Pick<
   Reservation,
-  "id" | "time" | "partySize" | "guestName" | "guestPhone" | "guestEmail" | "notes" | "status" | "source"
+  "id" | "time" | "partySize" | "guestName" | "guestPhone" | "guestEmail" | "notes" | "status" | "source" | "guestConfirmedAt"
 >;
 
 const SOURCE: Record<Reservation["source"], string> = { online: "Online", phone: "Telefono", walk_in: "Senza prenotazione" };
@@ -37,7 +38,7 @@ const STATE_CLASS: Partial<Record<ReservationStatus, string>> = {
 };
 
 /** One booking in the day list. A status tap shows the new status at once; the server confirms in the background. */
-export function BookingRow({ b, table }: { b: RowBooking; table?: string }) {
+export function BookingRow({ b, table, guest }: { b: RowBooking; table?: string; guest?: GuestInfo }) {
   const [status, showStatus] = useOptimistic(b.status);
   const change = (next: ReservationStatus) => async (data: FormData) => {
     showStatus(next);
@@ -49,10 +50,22 @@ export function BookingRow({ b, table }: { b: RowBooking; table?: string }) {
       <time>{b.time}</time>
       <div className="who">
         <div>
-          <span className="name">{b.guestName}</span>
+          {guest ? (
+            <Link className="name" href={`/app/ospiti/${guest.guestId}`}>
+              {b.guestName}
+            </Link>
+          ) : (
+            <span className="name">{b.guestName}</span>
+          )}
           <span className="party" title={`${b.partySize} persone`}>{b.partySize}</span>
         </div>
         <div className="meta muted">
+          {guest?.badges.map((badge) => (
+            <span key={badge.text} className={`tag${badge.tone === "alert" ? " tag-alert" : badge.tone === "ok" ? " tag-ok" : ""}`}>
+              {badge.text}
+            </span>
+          ))}
+          {b.guestConfirmedAt && status === "confirmed" && <span className="tag tag-ok">Ci sarà</span>}
           {table && <span className="table-tag">{table}</span>}
           {b.guestPhone && <a href={`tel:${b.guestPhone.replace(/\s/g, "")}`}>{b.guestPhone}</a>}
           <span>{SOURCE[b.source]}</span>
@@ -60,7 +73,9 @@ export function BookingRow({ b, table }: { b: RowBooking; table?: string }) {
           {status === "no_show" && <span className="tag tag-alert">No-show</span>}
           {status === "completed" && <span className="tag">Andati via</span>}
         </div>
+        {guest?.allergies && <p className="note note-alert">Allergie: {guest.allergies}</p>}
         {b.notes && <p className="note">{b.notes}</p>}
+        {guest?.note && <p className="note note-guest">{guest.note}</p>}
       </div>
       <div className="actions">
         {NEXT[status].map((a) => (

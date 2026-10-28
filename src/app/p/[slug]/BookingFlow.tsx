@@ -2,7 +2,7 @@
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { capitalize } from "@/lib/time";
-import { createBooking, type BookingResult } from "./actions";
+import { createBooking, joinWaitlist, type BookingResult, type WaitResult } from "./actions";
 
 type Day = { date: string; open: boolean };
 
@@ -19,6 +19,8 @@ export function BookingFlow({
   maxPartySize,
   phone,
   restaurantName,
+  initialDate,
+  initialParty,
 }: {
   slug: string;
   embed: boolean;
@@ -28,9 +30,14 @@ export function BookingFlow({
   maxPartySize: number;
   phone: string;
   restaurantName: string;
+  /** From the link in a waitlist email: open on that day and party size. */
+  initialDate?: string;
+  initialParty?: number;
 }) {
-  const [party, setParty] = useState(Math.min(2, maxPartySize));
-  const [date, setDate] = useState(days.find((d) => d.open)?.date ?? days[0].date);
+  const [party, setParty] = useState(Math.min(initialParty ?? 2, maxPartySize));
+  const [date, setDate] = useState(
+    days.find((d) => d.date === initialDate && d.open)?.date ?? days.find((d) => d.open)?.date ?? days[0].date,
+  );
   const [zone, setZone] = useState("");
   const [slots, setSlots] = useState<string[] | null>(null);
   const [time, setTime] = useState<string | null>(null);
@@ -217,10 +224,13 @@ export function BookingFlow({
         ) : slots === null ? (
           <p className="muted" aria-live="polite">Cerco i tavoli liberi…</p>
         ) : slots.length === 0 ? (
-          <p className="panel">
-            Nessun tavolo libero per {people(party)} in questo giorno{zone ? " in quest’area" : ""}. Prova un altro giorno{zone ? " o un’altra area" : ""}
-            {phone ? <> o chiama al <a href={`tel:${phone.replace(/\s/g, "")}`}>{phone}</a></> : ""}.
-          </p>
+          <div className="panel stack">
+            <p>
+              Nessun tavolo libero per {people(party)} in questo giorno{zone ? " in quest’area" : ""}. Prova un altro giorno{zone ? " o un’altra area" : ""}
+              {phone ? <> o chiama al <a href={`tel:${phone.replace(/\s/g, "")}`}>{phone}</a></> : ""}.
+            </p>
+            <WaitlistForm key={`${date}-${party}`} slug={slug} date={date} party={party} />
+          </div>
         ) : (
           <div className="slots">
             {slots.map((s) => (
@@ -232,5 +242,52 @@ export function BookingFlow({
         )}
       </div>
     </>
+  );
+}
+
+/** For a full day: leave an email and get one if a table frees up. */
+function WaitlistForm({ slug, date, party }: { slug: string; date: string; party: number }) {
+  const [open, setOpen] = useState(false);
+  const [state, run, pending] = useActionState<WaitResult, FormData>(joinWaitlist.bind(null, slug), null);
+  if (state?.ok) return <p className="form-ok" role="status">{state.ok}</p>;
+  if (!open) {
+    return (
+      <div>
+        <button type="button" className="btn" onClick={() => setOpen(true)}>Avvisami se si libera un tavolo</button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="stack"
+      style={{ gap: 12 }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const data = new FormData(e.currentTarget);
+        startTransition(() => run(data));
+      }}
+    >
+      <input type="hidden" name="date" value={date} />
+      <input type="hidden" name="partySize" value={party} />
+      <div className="honeypot" aria-hidden="true">
+        <label>Sito web <input name="website" tabIndex={-1} autoComplete="off" /></label>
+      </div>
+      <label className="field">
+        Nome e cognome
+        <input className="input" name="name" autoComplete="name" required />
+      </label>
+      <label className="field">
+        Email <span className="hint">Ti scriviamo qui se si libera un tavolo</span>
+        <input className="input" type="email" name="email" autoComplete="email" required />
+      </label>
+      <label className="field">
+        Telefono <span className="hint">Facoltativo</span>
+        <input className="input" type="tel" name="phone" autoComplete="tel" />
+      </label>
+      {state?.error && <p className="form-error" role="alert">{state.error}</p>}
+      <div>
+        <button type="submit" className="btn btn-fill" disabled={pending}>{pending ? "Un attimo…" : "Mettimi in lista d’attesa"}</button>
+      </div>
+    </form>
   );
 }

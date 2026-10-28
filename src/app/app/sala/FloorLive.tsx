@@ -18,8 +18,32 @@ import {
   type TableState,
 } from "@/lib/floor";
 import { fromMinutes, toMinutes } from "@/lib/time";
+import type { GuestInfo } from "@/lib/guests";
 import { ComboOutline, FixtureShape, fit, PlanDefs, TableShape, ZoneBody, ZoneTab } from "@/components/PlanShapes";
-import { assignTable, autoAssign, seatWalkIn, setAreaClosed, setFloorStatus, type FloorResult } from "./actions";
+import {
+  addToWaitlist,
+  assignTable,
+  autoAssign,
+  leaveWaitlist,
+  notifyWaitEntry,
+  seatFromWaitlist,
+  seatWalkIn,
+  setAreaClosed,
+  setFloorStatus,
+  type FloorResult,
+} from "./actions";
+
+export type WaitEntry = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  partySize: number;
+  notes: string;
+  status: "waiting" | "notified" | "seated" | "left";
+  source: "door" | "online";
+  waitedMinutes: number;
+};
 
 const STATE_LABEL: Record<TableState["state"], string> = {
   free: "Libero",
@@ -58,6 +82,8 @@ export function FloorLive({
   tables,
   combos,
   closedAreas,
+  guestInfo,
+  waitlist,
   bookings,
 }: {
   date: string;
@@ -75,6 +101,9 @@ export function FloorLive({
   combos: (PlanCombo & { label: string })[];
   /** Names of the areas closed to online booking on this date. */
   closedAreas: string[];
+  /** Guest markers, allergies and notes, by booking id. */
+  guestInfo: Record<string, GuestInfo>;
+  waitlist: WaitEntry[];
   bookings: FloorBooking[];
 }) {
   const [live, setLive] = useState(isToday);
@@ -86,6 +115,11 @@ export function FloorLive({
   const [message, setMessage] = useState<FloorResult>(null);
   const [pending, startTransition] = useTransition();
   const [view, show] = useOptimistic(bookings, applyChanges);
+  const [waits, showWait] = useOptimistic(waitlist, (list: WaitEntry[], c: { id: string; status: WaitEntry["status"] }) =>
+    list.map((w) => (w.id === c.id ? { ...w, status: c.status } : w)),
+  );
+  const [seatingWait, setSeatingWait] = useState<string | null>(null);
+  const [newWait, setNewWait] = useState({ name: "", phone: "", partySize: 2, notes: "" });
   const [closed, showClosed] = useOptimistic(closedAreas, (list: string[], c: { name: string; closed: boolean }) =>
     c.closed ? [...list, c.name] : list.filter((n) => n !== c.name),
   );
@@ -117,7 +151,10 @@ export function FloorLive({
     if (group) return { spot: { tableId: null, combinationId: group.id }, fits: true };
     return { spot: { tableId: table.id, combinationId: null }, fits: false };
   };
-  const fits = (table: PlanTable) => !!placeFor(table)?.fits;
+  const waitEntry = waits.find((w) => w.id === seatingWait) ?? null;
+  const fits = (table: PlanTable) =>
+    waitEntry ? table.seats >= waitEntry.partySize && states.get(table.id)?.state === "free" : !!placeFor(table)?.fits;
+  const choosing = !!placingBooking || !!waitEntry;
 
   const run = (action: () => Promise<FloorResult>, changes: Change[] = [], after?: () => void) =>
     startTransition(async () => {
@@ -128,6 +165,30 @@ export function FloorLive({
     });
 
   const onTable = (table: PlanTable) => {
+    if (waitEntry) {
+      const walkIn: FloorBooking = {
+        id: `wait-${waitEntry.id}`,
+        tableId: table.id,
+        combinationId: null,
+        time: fromMinutes(nowMinutes - (nowMinutes % 5)),
+        durationMinutes,
+        partySize: waitEntry.partySize,
+        guestName: waitEntry.name,
+        notes: waitEntry.notes,
+        status: "seated",
+      };
+      startTransition(async () => {
+        show([{ add: walkIn }]);
+        showWait({ id: waitEntry.id, status: "seated" });
+        const result = await seatFromWaitlist(waitEntry.id, table.id);
+        setMessage(result);
+        if (!result?.error) {
+          setSeatingWait(null);
+          setSelected(table.id);
+        }
+      });
+      return;
+    }
     const place = placeFor(table);
     if (placingBooking && place) {
       run(() => assignTable(placingBooking.id, place.spot), [{ id: placingBooking.id, ...place.spot }], () => {
@@ -183,6 +244,15 @@ export function FloorLive({
           <span className="small"><strong className="num">{seated}</strong> coperti a tavola</span>
         </div>
 
+        {waitEntry && (
+          <div className="placing" role="status">
+            <span>
+              Tocca un tavolo libero per <strong>{waitEntry.name}</strong> ({people(waitEntry.partySize)}, dalla lista d’attesa).
+            </span>
+            <button type="button" className="btn btn-small" onClick={() => setSeatingWait(null)}>Annulla</button>
+          </div>
+        )}
+
         {placingBooking && (
           <div className="placing" role="status">
             <span>
@@ -196,11 +266,11 @@ export function FloorLive({
         {floors.length > 1 && (
           <div className="floor-tabs" role="tablist" aria-label="Piani">
             {floors.map((f) => {
-              const fitting = placingBooking ? tables.filter((tb) => tb.floorId === f.id && fits(tb)).length : 0;
+              const fitting = choosing ? tables.filter((tb) => tb.floorId === f.id && fits(tb)).length : 0;
               return (
                 <button key={f.id} type="button" role="tab" aria-selected={f.id === floor.id} className="floor-tab" onClick={() => setFloorId(f.id)}>
                   {f.name}
-                  {placingBooking && <span className="floor-tab-count"> · {fitting} adatti</span>}
+                  {choosing && <span className="floor-tab-count"> · {fitting} adatti</span>}
                 </button>
               );
             })}
@@ -246,7 +316,7 @@ export function FloorLive({
               return (
                 <g
                   key={tb.id}
-                  className={`tb is-${s.state}${tb.id === selected ? " is-selected" : ""}${placingBooking ? (fits(tb) ? " is-fit" : " is-dim") : ""}`}
+                  className={`tb is-${s.state}${tb.id === selected ? " is-selected" : ""}${choosing ? (fits(tb) ? " is-fit" : " is-dim") : ""}`}
                   tabIndex={0}
                   role="button"
                   aria-label={`Tavolo ${tb.label}, ${tb.seats} posti, ${STATE_LABEL[s.state]}${s.booking ? `, ${s.booking.guestName}` : ""}`}
@@ -299,7 +369,7 @@ export function FloorLive({
             </div>
 
             {selState.booking && (
-              <BookingCard b={selState.booking} place={placeLabel(selState.booking)}>
+              <BookingCard b={selState.booking} place={placeLabel(selState.booking)} guest={guestInfo[selState.booking.id]}>
                 {selState.booking.status === "seated" ? (
                   <button type="button" className="btn btn-small btn-fill" disabled={pending} onClick={() => run(() => setFloorStatus(selState.booking!.id, "completed"), [{ id: selState.booking!.id, status: "completed" }])}>
                     Si sono alzati
@@ -375,7 +445,7 @@ export function FloorLive({
             )}
           </div>
         ) : (
-          !placingBooking && <p className="muted">Tocca un tavolo per vedere chi c’è, far sedere qualcuno o spostarlo.</p>
+          !choosing && <p className="muted">Tocca un tavolo per vedere chi c’è, far sedere qualcuno o spostarlo.</p>
         )}
 
         <div className="panel stack">
@@ -416,6 +486,113 @@ export function FloorLive({
               </div>
             </>
           )}
+        </div>
+
+        <div className="panel stack">
+          <div className="spread">
+            <h2>Lista d’attesa</h2>
+            <span className="small muted">{waits.filter((w) => w.status === "waiting" || w.status === "notified").length}</span>
+          </div>
+          {waits.filter((w) => w.status !== "seated").length === 0 && (
+            <p className="small muted">Nessuno in attesa. Chi arriva senza prenotare e trova pieno, aggiungilo qui.</p>
+          )}
+          <ul className="list-plain">
+            {waits
+              .filter((w) => w.status === "waiting" || w.status === "notified")
+              .map((w) => (
+                <li key={w.id} className="wait-item">
+                  <span>
+                    <strong>{w.name}</strong> <span className="party-inline">{w.partySize}</span>
+                    <span className="small muted" style={{ display: "block" }}>
+                      {w.source === "online" ? "Online" : `In attesa da ${w.waitedMinutes} min`}
+                      {w.status === "notified" && " · avvisato"}
+                      {w.notes && ` · ${w.notes}`}
+                    </span>
+                  </span>
+                  <span className="row" style={{ gap: 4 }}>
+                    {isToday && (
+                      <button type="button" className={`btn btn-small${seatingWait === w.id ? " btn-fill" : ""}`} onClick={() => setSeatingWait(seatingWait === w.id ? null : w.id)}>
+                        Fai sedere
+                      </button>
+                    )}
+                    {w.phone && (
+                      <a className="btn btn-small" href={`tel:${w.phone.replace(/\s/g, "")}`}>
+                        Chiama
+                      </a>
+                    )}
+                    {w.status === "waiting" && (
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        disabled={pending}
+                        onClick={() =>
+                          startTransition(async () => {
+                            showWait({ id: w.id, status: "notified" });
+                            setMessage(await notifyWaitEntry(w.id));
+                          })
+                        }
+                      >
+                        {w.email ? "Avvisa" : "Segna avvisato"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-small btn-quiet"
+                      disabled={pending}
+                      onClick={() =>
+                        startTransition(async () => {
+                          showWait({ id: w.id, status: "left" });
+                          setMessage(await leaveWaitlist(w.id));
+                        })
+                      }
+                    >
+                      Togli
+                    </button>
+                  </span>
+                </li>
+              ))}
+          </ul>
+          <details className="wait-add">
+            <summary className="btn btn-small">+ Aggiungi in attesa</summary>
+            <form
+              className="stack"
+              style={{ gap: 10, marginTop: 10 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                startTransition(async () => {
+                  const result = await addToWaitlist({ date, ...newWait });
+                  setMessage(result);
+                  if (!result?.error) {
+                    setNewWait({ name: "", phone: "", partySize: 2, notes: "" });
+                    form.closest("details")?.removeAttribute("open");
+                  }
+                });
+              }}
+            >
+              <div className="row">
+                <label className="field" style={{ flex: "1 1 140px" }}>
+                  Nome
+                  <input className="input" value={newWait.name} onChange={(e) => setNewWait({ ...newWait, name: e.target.value })} required />
+                </label>
+                <label className="field" style={{ width: 90 }}>
+                  Persone
+                  <input className="input" type="number" min={1} max={200} value={newWait.partySize} onChange={(e) => setNewWait({ ...newWait, partySize: Number(e.target.value) || 1 })} />
+                </label>
+              </div>
+              <label className="field">
+                Telefono <span className="hint">Per chiamarli quando il tavolo è pronto</span>
+                <input className="input" type="tel" value={newWait.phone} onChange={(e) => setNewWait({ ...newWait, phone: e.target.value })} />
+              </label>
+              <label className="field">
+                Note <span className="hint">Es. preferiscono fuori</span>
+                <input className="input" value={newWait.notes} onChange={(e) => setNewWait({ ...newWait, notes: e.target.value })} />
+              </label>
+              <div>
+                <button type="submit" className="btn btn-small btn-fill" disabled={pending}>Aggiungi</button>
+              </div>
+            </form>
+          </details>
         </div>
 
         {areaNames.length > 0 && (
@@ -459,18 +636,36 @@ export function FloorLive({
   );
 }
 
-function BookingCard({ b, place, children }: { b: FloorBooking; place: string; children: React.ReactNode }) {
+function BookingCard({ b, place, guest, children }: { b: FloorBooking; place: string; guest?: GuestInfo; children: React.ReactNode }) {
   const end = fromMinutes(toMinutes(b.time) + b.durationMinutes);
   return (
     <div className="booking-card stack" style={{ gap: 8 }}>
       <div>
-        <strong style={{ fontSize: 18 }}>{b.guestName}</strong> <span className="party-inline">{b.partySize}</span>
+        {guest ? (
+          <Link href={`/app/ospiti/${guest.guestId}`} style={{ fontSize: 18, fontWeight: 700 }}>
+            {b.guestName}
+          </Link>
+        ) : (
+          <strong style={{ fontSize: 18 }}>{b.guestName}</strong>
+        )}{" "}
+        <span className="party-inline">{b.partySize}</span>
         <div className="small muted">
           {b.time}–{end}
           {place && ` · ${place}`}
         </div>
       </div>
+      {guest && (
+        <div className="row" style={{ gap: 4 }}>
+          {guest.badges.map((badge) => (
+            <span key={badge.text} className={`tag${badge.tone === "alert" ? " tag-alert" : badge.tone === "ok" ? " tag-ok" : ""}`}>
+              {badge.text}
+            </span>
+          ))}
+        </div>
+      )}
+      {guest?.allergies && <p className="note small note-alert">Allergie: {guest.allergies}</p>}
       {b.notes && <p className="note small">{b.notes}</p>}
+      {guest?.note && <p className="note small note-guest">{guest.note}</p>}
       <div className="row" style={{ gap: 6 }}>{children}</div>
     </div>
   );

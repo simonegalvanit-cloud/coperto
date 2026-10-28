@@ -7,7 +7,10 @@ import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { randomToken, requireAccount } from "@/lib/auth";
 import { emailCancellation, emailGuestConfirmation } from "@/lib/notifications";
+import { after } from "next/server";
 import { checkSpot } from "@/lib/spots";
+import { notifyWaitlist } from "@/lib/waitlist";
+import { guestFor } from "@/lib/guests";
 import { isDate, isTime } from "@/lib/time";
 import type { ActionResult } from "@/components/ActionForm";
 
@@ -24,7 +27,13 @@ export async function setStatus(data: FormData) {
     .set({ status, updatedAt: new Date() })
     .where(and(eq(schema.reservations.id, id), eq(schema.reservations.restaurantId, restaurant.id)))
     .returning();
-  if (updated && status === "cancelled") await emailCancellation(restaurant, updated, "restaurant");
+  // After the response, so the tap feels instant: tell the guest, then offer the freed table to the waitlist.
+  if (updated && (status === "cancelled" || status === "no_show")) {
+    after(async () => {
+      if (status === "cancelled") await emailCancellation(restaurant, updated, "restaurant");
+      await notifyWaitlist(restaurant, updated.date);
+    });
+  }
   revalidatePath("/app");
 }
 
@@ -50,12 +59,14 @@ export async function saveReservation(_: ActionResult, data: FormData): Promise<
   const parsed = reservationSchema.safeParse({ ...raw, id: raw.id || undefined, guestEmail: String(raw.guestEmail ?? "").trim() });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { id, sendEmail, place, ...rest } = parsed.data;
+  const db = await getDb();
   const fields = {
     ...rest,
     tableId: place?.startsWith("t:") ? place.slice(2) : null,
     combinationId: place?.startsWith("c:") ? place.slice(2) : null,
+    // Re-matched on every save, so adding a phone number links the booking to the guest's profile.
+    guestId: await guestFor(db, restaurant.id, rest),
   };
-  const db = await getDb();
 
   if (fields.tableId || fields.combinationId) {
     const [existing] = id
