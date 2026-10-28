@@ -15,6 +15,10 @@ async function connect(): Promise<DB> {
     // prepare: false keeps it compatible with Supabase's transaction pooler.
     return drizzle(postgres(url, { prepare: false }), { schema });
   }
+  if (process.env.VERCEL) {
+    // Vercel's disk is read-only and wiped between requests: an embedded database there would lose every booking.
+    throw new Error("DATABASE_URL is not set. Add your Supabase connection string in Vercel → Settings → Environment Variables.");
+  }
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
   const { migrate } = await import("drizzle-orm/pglite/migrator");
