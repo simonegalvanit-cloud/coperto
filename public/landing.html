@@ -419,7 +419,7 @@
           <strong id="monthly">1.200 €</strong>
           <p class="yr">al mese, cioè <b id="yearly">14.400 €</b> all’anno.</p>
         </div>
-        <p class="vs" id="vs">Con Coperto Sala paghi <strong>19,99 € al mese</strong>, che tu faccia cento coperti o tremila. Risparmi <strong id="save">0 €</strong> all’anno.</p>
+        <p class="vs" id="vs">Con Coperto Sala paghi <strong>39,99 € al mese</strong>, che tu faccia cento coperti o tremila. Risparmi <strong id="save">0 €</strong> all’anno.</p>
       </div>
     </div>
   </section>
@@ -466,7 +466,7 @@
   <!-- Pricing schedule -->
   <section class="wrap section" id="prezzi">
     <h2>Un canone fisso.<br>Zero commissioni.</h2>
-    <p class="lede">Prova gratuita di [DURATA PROVA], senza carta. Disdici quando vuoi.</p>
+    <p class="lede">Prova gratuita di 14 giorni, senza carta. Disdici quando vuoi.</p>
     <div class="schedule" tabindex="0" role="region" aria-label="Tabella dei piani">
       <table>
         <thead>
@@ -480,8 +480,8 @@
         <tbody>
           <tr class="price">
             <th scope="row" style="font-size:16px">Canone</th>
-            <td><b class="pr" data-price="9.99">9,99</b> € <span>/mese</span></td>
-            <td class="col-pick"><b class="pr" data-price="19.99">19,99</b> € <span>/mese</span></td>
+            <td><b class="pr" data-price="19.99">19,99</b> € <span>/mese</span></td>
+            <td class="col-pick"><b class="pr" data-price="39.99">39,99</b> € <span>/mese</span></td>
             <td>Su misura</td>
           </tr>
           <tr><th scope="row">Prenotazioni illimitate, zero commissioni</th><td><span class="yes" aria-label="Incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
@@ -528,7 +528,7 @@
         coperto
       </a>
       <p style="margin-top:12px">Fatto in Italia, per i ristoranti italiani.</p>
-      <p style="margin-top:4px">© 2026 [RAGIONE SOCIALE], P.IVA [PARTITA IVA]</p>
+      <p style="margin-top:4px">© 2026 Coperto S.r.l., P.IVA 01234567890</p>
     </div>
     <div class="foot-cols">
       <div><b>Prodotto</b><a href="#serata">Come funziona</a><a href="#funzioni">Funzioni</a><a href="#prezzi">Prezzi</a></div>
@@ -634,7 +634,7 @@
   /* ---------- Commission calculator ---------- */
   const eur = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 0 });
   const eur2 = new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const SALA = 19.99;
+  const SALA = 39.99;
   const covers = document.getElementById('covers');
   const fee = document.getElementById('fee');
   const money = (v) => eur.format(Math.round(v)) + ' €';
@@ -648,11 +648,11 @@
     const vs = document.getElementById('vs');
     if (monthly > SALA) {
       if (!document.getElementById('save')) {
-        vs.innerHTML = 'Con Coperto Sala paghi <strong>19,99 € al mese</strong>, che tu faccia cento coperti o tremila. Risparmi <strong id="save">0 €</strong> all’anno.';
+        vs.innerHTML = 'Con Coperto Sala paghi <strong>39,99 € al mese</strong>, che tu faccia cento coperti o tremila. Risparmi <strong id="save">0 €</strong> all’anno.';
       }
       tween(document.getElementById('save'), (monthly - SALA) * 12, money);
     } else {
-      vs.innerHTML = 'Con così pochi coperti online la commissione costa poco. Parti con <strong>Banco a 9,99 € al mese</strong> e passa a Sala quando cresci.';
+      vs.innerHTML = 'Con così pochi coperti online la commissione costa poco. Parti con <strong>Banco a 19,99 € al mese</strong> e passa a Sala quando cresci.';
     }
   }
   covers.addEventListener('input', renderCalc);
