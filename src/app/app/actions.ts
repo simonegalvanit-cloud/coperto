@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { randomToken, requireAccount } from "@/lib/auth";
 import { emailCancellation, emailGuestConfirmation } from "@/lib/notifications";
+import { conflictOn } from "@/lib/floor";
 import { isDate, isTime } from "@/lib/time";
 import type { ActionResult } from "@/components/ActionForm";
 
@@ -37,6 +38,7 @@ const reservationSchema = z.object({
   guestEmail: z.union([z.literal(""), z.email("Controlla l’email.")]),
   notes: z.string().trim().max(1000),
   source: z.enum(["phone", "walk_in", "online"]),
+  tableId: z.union([z.literal(""), z.uuid()]).optional(),
   sendEmail: z.literal("on").optional(),
 });
 
@@ -46,8 +48,25 @@ export async function saveReservation(_: ActionResult, data: FormData): Promise<
   const raw = Object.fromEntries(data);
   const parsed = reservationSchema.safeParse({ ...raw, id: raw.id || undefined, guestEmail: String(raw.guestEmail ?? "").trim() });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { id, sendEmail, ...fields } = parsed.data;
+  const { id, sendEmail, tableId: rawTable, ...rest } = parsed.data;
+  const fields = { ...rest, tableId: rawTable || null };
   const db = await getDb();
+
+  if (fields.tableId) {
+    const [table] = await db
+      .select()
+      .from(schema.diningTables)
+      .where(and(eq(schema.diningTables.id, fields.tableId), eq(schema.diningTables.restaurantId, restaurant.id)));
+    if (!table) return { error: "Tavolo non trovato." };
+    const sameDay = await db
+      .select()
+      .from(schema.reservations)
+      .where(and(eq(schema.reservations.restaurantId, restaurant.id), eq(schema.reservations.date, fields.date)));
+    const existing = id ? sameDay.find((b) => b.id === id) : undefined;
+    const stay = { id: id ?? "", time: fields.time, durationMinutes: existing?.durationMinutes ?? restaurant.durationMinutes };
+    const clash = conflictOn(table.id, stay, sameDay);
+    if (clash) return { error: `Il tavolo ${table.label} è già di ${clash.guestName} dalle ${clash.time}. Scegli un altro tavolo.` };
+  }
 
   if (id) {
     const [updated] = await db

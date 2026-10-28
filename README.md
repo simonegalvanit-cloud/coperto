@@ -2,7 +2,9 @@
 
 Reservations and floor management for Italian restaurants. Flat monthly fee, no per-cover commissions.
 
-## What works today (stage 1, "Banco")
+## What works today
+
+### Stage 1, "Banco": online bookings
 
 | Who | Page | What it does |
 |---|---|---|
@@ -15,6 +17,19 @@ Reservations and floor management for Italian restaurants. Flat monthly fee, no 
 | Guests | `/p/<restaurant>/prenotazione/<code>` | Confirmation page with a cancel button (linked from the confirmation email) |
 
 Emails go out on every new booking (to guest and restaurant) and on every cancellation.
+
+### Stage 2, "Sala": the live floor plan
+
+| Page | What it does |
+|---|---|
+| `/app/sala/modifica` | Draw the room: add tables from presets (or start from an example room), drag them into place, set name, seats and shape |
+| `/app/sala` | The room live: seated, arriving within 30 minutes, late, free, and each table's next booking. Drag the time slider to see any moment of the day. |
+
+From the floor view staff can seat a booking, mark a table as left, seat walk-ins on a free table, move a booking to another
+table, and assign bookings without a table by hand or automatically (smallest free table that fits). A table can never be
+double-booked. The booking list and the floor view refresh themselves every 15 seconds.
+
+The rules for table states and automatic assignment are in `src/lib/floor.ts`.
 
 **How availability works** (`src/lib/availability.ts`): a time is bookable online if, for the whole length of the stay,
 the people already seated plus the new party fit in the room's seats, the optional "max arrivals per slot" isn't exceeded,
@@ -54,13 +69,12 @@ Every deploy applies database changes automatically before building.
 ## For developers
 
 - Next.js 16 (App Router, server actions), TypeScript, Drizzle ORM on Postgres (PGlite locally)
-- `npm test`: unit tests for the availability rules
+- `npm test`: unit tests for the availability and floor-plan rules
 - `npm run lint`, `npm run typecheck`
 - After changing `src/db/schema.ts`, run `npm run db:generate` and commit the new file in `drizzle/`.
 - Every staff query is scoped to the logged-in restaurant via `requireAccount()` (`src/lib/auth.ts`).
 
 ## Next stages
 
-2. **Sala**: floor plan editor and live table status
 3. **Ospiti**: guest profiles, WhatsApp reminders, waitlist
 4. **Revenue**: Stripe subscriptions, deposits and card guarantees

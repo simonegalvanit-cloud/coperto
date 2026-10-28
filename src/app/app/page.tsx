@@ -5,6 +5,7 @@ import type { Reservation, ReservationStatus } from "@/db/schema";
 import { requireAccount } from "@/lib/auth";
 import { ACTIVE_STATUSES } from "@/lib/restaurant";
 import { addDays, capitalize, formatDate, isDate, nowIn, toMinutes, weekdayOf } from "@/lib/time";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { setStatus } from "./actions";
 
@@ -33,7 +34,7 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
   const date = typeof param === "string" && isDate(param) ? param : today;
 
   const db = await getDb();
-  const [bookings, services, [closure]] = await Promise.all([
+  const [bookings, services, [closure], tables] = await Promise.all([
     db
       .select()
       .from(schema.reservations)
@@ -48,7 +49,12 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
       .select()
       .from(schema.closures)
       .where(and(eq(schema.closures.restaurantId, restaurant.id), eq(schema.closures.date, date))),
+    db
+      .select({ id: schema.diningTables.id, label: schema.diningTables.label })
+      .from(schema.diningTables)
+      .where(eq(schema.diningTables.restaurantId, restaurant.id)),
   ]);
+  const tableLabel = new Map(tables.map((t) => [t.id, t.label]));
 
   const active = bookings.filter((b) => (ACTIVE_STATUSES as readonly string[]).includes(b.status) || b.status === "completed");
   const covers = (list: Reservation[]) => list.reduce((n, b) => n + b.partySize, 0);
@@ -70,6 +76,7 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
 
   return (
     <>
+      <AutoRefresh />
       <div className="daybar">
         <h1>
           {label ? `${label}, ${formatDate(date)}` : capitalize(formatDate(date))}
@@ -114,7 +121,7 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
               </h2>
               <ul className="bookings">
                 {g.items.map((b) => (
-                  <BookingRow key={b.id} b={b} />
+                  <BookingRow key={b.id} b={b} table={b.tableId ? tableLabel.get(b.tableId) : undefined} />
                 ))}
               </ul>
             </section>
@@ -124,7 +131,7 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
   );
 }
 
-function BookingRow({ b }: { b: Reservation }) {
+function BookingRow({ b, table }: { b: Reservation; table?: string }) {
   const stateClass =
     b.status === "seated" ? "is-seated" : b.status === "completed" ? "is-done" : b.status === "cancelled" || b.status === "no_show" ? "is-cancelled" : "";
   return (
@@ -136,6 +143,7 @@ function BookingRow({ b }: { b: Reservation }) {
           <span className="party" title={`${b.partySize} persone`}>{b.partySize}</span>
         </div>
         <div className="meta muted">
+          {table && <span className="table-tag">Tavolo {table}</span>}
           {b.guestPhone && <a href={`tel:${b.guestPhone.replace(/\s/g, "")}`}>{b.guestPhone}</a>}
           <span>{SOURCE[b.source]}</span>
           {b.status === "cancelled" && <span className="tag tag-alert">Cancellata</span>}

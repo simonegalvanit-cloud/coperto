@@ -2,7 +2,15 @@ import type { Reservation } from "@/db/schema";
 import { ActionForm } from "@/components/ActionForm";
 import { saveReservation } from "./actions";
 
-export function ReservationForm({ date, initial }: { date: string; initial?: Reservation }) {
+export function ReservationForm({
+  date,
+  initial,
+  tables,
+}: {
+  date: string;
+  initial?: Reservation;
+  tables: { id: string; label: string; seats: number }[];
+}) {
   return (
     <ActionForm action={saveReservation} submitLabel={initial ? "Salva le modifiche" : "Aggiungi la prenotazione"}>
       {initial && <input type="hidden" name="id" value={initial.id} />}
@@ -34,6 +42,19 @@ export function ReservationForm({ date, initial }: { date: string; initial?: Res
         Email <span className="hint">Facoltativa, per mandare la conferma</span>
         <input className="input" type="email" name="guestEmail" defaultValue={initial?.guestEmail} autoComplete="off" />
       </label>
+      {tables.length > 0 && (
+        <label className="field">
+          Tavolo <span className="hint">Facoltativo, puoi assegnarlo anche dalla sala</span>
+          <select className="input" name="tableId" defaultValue={initial?.tableId ?? ""}>
+            <option value="">Nessun tavolo</option>
+            {tables.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label} ({t.seats} posti)
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="field">
         Note <span className="hint">Allergie, ricorrenze, richieste sul tavolo</span>
         <textarea className="input" name="notes" defaultValue={initial?.notes} />
