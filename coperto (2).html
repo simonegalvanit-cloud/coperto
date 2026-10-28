@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coperto — la tua sala, in tempo reale</title>
+<meta name="description" content="Prenotazioni e gestione sala per ristoranti italiani. Pianta in tempo reale, profili ospite, promemoria WhatsApp. Canone fisso, zero commissioni a coperto.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&display=swap">
+<script>
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('anim');
+</script>
+<style>
+  :root {
+    --ease: cubic-bezier(.2, .7, .1, 1);
+    --ground: #DDE2DA;
+    --paper: #E6EAE3;
+    --ink: #1B2A6B;
+    --ink-deep: #0E1640;
+    --grid: rgba(27, 42, 107, .08);
+    --pad: clamp(20px, 4vw, 56px);
+    --max: 1320px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: 'Schibsted Grotesk', sans-serif; font-size: 17px; line-height: 1.5; }
+  .counts strong, #coversOut, .table b { font-variant-numeric: tabular-nums; }
+  a { color: var(--ink); text-decoration: none; }
+  a:hover { color: var(--ink-deep); }
+  a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+  h1, h2, h3 { margin: 0; letter-spacing: -0.035em; line-height: 1; }
+  h2 { font-size: clamp(36px, 4.4vw, 64px); font-weight: 700; }
+  p { margin: 0; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--pad); }
+  .section { padding-top: clamp(52px, 5.5vw, 80px); }
+  .lede { font-size: 19px; max-width: 46ch; margin-top: 20px; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 26px; border-radius: 2px; font: inherit; font-size: 17px; font-weight: 600; cursor: pointer; }
+  .btn-fill { background: linear-gradient(var(--ink-deep), var(--ink-deep)) left / 0% 100% no-repeat, var(--ink); color: var(--ground); border: 0; transition: background-size .45s var(--ease), color .2s; }
+  .btn-fill:hover { background-size: 100% 100%; color: #fff; }
+  .btn-line { border: 1.5px solid var(--ink); background: linear-gradient(var(--ink), var(--ink)) left / 0% 100% no-repeat; color: var(--ink); min-height: 44px; padding: 0 18px; font-size: 15px; transition: background-size .4s var(--ease), color .3s; }
+  .btn-line:hover { background-size: 100% 100%; color: var(--ground); }
+  .link { text-decoration: underline; text-underline-offset: 4px; }
+
+  /* Header */
+  header { position: sticky; top: 0; z-index: 20; background: rgba(221, 226, 218, .92); backdrop-filter: blur(10px); border-bottom: 1.5px solid var(--ink); }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-top: 18px; padding-bottom: 18px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
+  .links { display: flex; gap: 32px; font-size: 15px; }
+
+  /* Hero */
+  .hero { display: flex; flex-wrap: wrap; gap: clamp(28px, 3vw, 48px); padding-top: clamp(24px, 3vw, 40px); align-items: flex-start; }
+  .hero-copy { flex: 1 1 400px; min-width: 0; max-width: 540px; padding-top: 4px; }
+  .hero h1 { font-size: clamp(40px, 4.8vw, 72px); font-weight: 700; letter-spacing: -0.04em; line-height: .96; }
+  .hero-copy p { font-size: 18px; max-width: 38ch; margin-top: 18px; }
+  .hero-copy p:first-of-type { margin-top: 20px; }
+  .ctas { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+
+  figure { margin: 0; }
+  .hero figure { flex: 1.6 1 520px; min-width: 0; }
+  .drawing { background-color: var(--paper); background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); }
+  .plan { position: relative; width: 100%; aspect-ratio: 16 / 10; border: 2px solid transparent; background-size: 2.5% 4%; }
+  .frame { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  .frame rect { fill: none; stroke: var(--ink); stroke-width: .45; }
+  .kitchen { position: absolute; left: 72%; top: 0; width: 28%; height: 40%; border-left: 2px solid var(--ink); border-bottom: 2px solid var(--ink); background-image: repeating-linear-gradient(45deg, rgba(27,42,107,.28) 0 1px, transparent 1px 9px); display: flex; align-items: center; justify-content: center; }
+  .kitchen span { background: var(--paper); padding: 2px 8px; font-size: 13px; font-weight: 600; }
+  .bar { position: absolute; left: 86%; top: 50%; width: 8%; height: 42%; border: 2px solid var(--ink); display: flex; align-items: center; justify-content: center; }
+  .bar span { writing-mode: vertical-rl; font-size: 13px; font-weight: 600; }
+  .door { position: absolute; left: 2%; bottom: -2px; width: 10%; border-bottom: 4px solid var(--paper); }
+  .door-label { position: absolute; left: 2%; bottom: 2%; font-size: 12px; }
+  .table { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; overflow: hidden; text-align: center; transition: background-color .25s, color .25s; background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 2px; }
+  .table.round { border-radius: 50%; }
+  .table.seated { background: var(--ink); color: var(--paper); border: 2px solid var(--ink); }
+  .table.arriving { background: rgba(27,42,107,.08); border: 2px dashed var(--ink); }
+  .table b { font-size: clamp(10px, 1vw, 13px); }
+  .table i { font-style: normal; font-size: clamp(9px, .85vw, 11px); line-height: 1.1; }
+  .scrub { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px; }
+  .scrub label { display: flex; align-items: baseline; gap: 12px; font-size: 15px; }
+  .clock { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; min-width: 3.2ch; }
+  input[type=range] { flex: 1 1 240px; min-width: 0; height: 44px; margin: 0; accent-color: var(--ink); }
+  .counts { display: flex; gap: 20px; font-size: 14px; }
+  .counts strong { font-size: 18px; }
+  .legend { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; }
+  .legend span { display: flex; align-items: center; gap: 8px; }
+  .sw { width: 14px; height: 14px; }
+
+  /* Timeline drawn as a dimension line */
+  .night-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 24px; }
+  .dim { position: relative; margin-top: 36px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 24px; }
+  .dim::before { content: ''; position: absolute; left: 0; right: 0; top: 38px; border-top: 1.5px solid var(--ink); }
+  .dim::after { content: ''; position: absolute; left: 0; right: 0; top: 30px; height: 17px; border-left: 1.5px solid var(--ink); border-right: 1.5px solid var(--ink); }
+  .step { position: relative; padding-right: 8px; }
+  .step time { display: block; font-size: 14px; height: 24px; }
+  .step .dot { width: 13px; height: 13px; border: 2px solid var(--ink); background: var(--ground); border-radius: 50%; margin: 8px 0 14px; position: relative; z-index: 1; }
+  .step:last-child .dot { background: var(--ink); }
+  .step h3 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+  .step p { margin-top: 10px; font-size: 16px; max-width: 30ch; }
+
+  /* Guest profile as a drawing title block */
+  .split { display: flex; flex-wrap: wrap; gap: clamp(28px, 4vw, 56px); align-items: center; }
+  .split > div { flex: 1 1 420px; min-width: 0; }
+  .titleblock { border: 2px solid var(--ink); background: var(--paper); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tb { padding: 12px 14px 14px; border-right: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink); min-width: 0; }
+  .tb small { display: block; font-size: 12px; margin-bottom: 4px; }
+  .tb strong { display: block; font-size: 17px; font-weight: 600; line-height: 1.25; }
+  .tb.big strong { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; }
+  .tb.c2 { grid-column: span 2; }
+  .tb.c4 { grid-column: span 4; }
+  .tb.end { border-right: 0; }
+  .tb.last { border-bottom: 0; }
+  .ticks { margin: 28px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
+  .ticks li { display: flex; gap: 14px; align-items: baseline; }
+  .ticks li::before { content: ''; flex: none; width: 18px; border-top: 1.5px solid var(--ink); transform: translateY(-4px); }
+
+  /* Commission calculator */
+  .calc { margin-top: 28px; border: 2px solid var(--ink); display: flex; flex-wrap: wrap; }
+  .calc-in { flex: 1 1 380px; min-width: 0; padding: clamp(24px, 3vw, 40px); display: flex; flex-direction: column; gap: 22px; border-right: 1.5px solid var(--ink); }
+  .calc-out { flex: 1 1 380px; min-width: 0; padding: clamp(24px, 3vw, 40px); background-size: 20px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 22px; }
+  .field label { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; font-size: 16px; }
+  .field output { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .field input[type=range] { width: 100%; }
+  .money { display: flex; align-items: center; gap: 8px; }
+  .money input { width: 120px; min-height: 48px; padding: 0 12px; border: 1.5px solid var(--ink); border-radius: 2px; background: var(--paper); font: inherit; font-size: 20px; font-weight: 600; color: var(--ink); }
+  .note { font-size: 14px; }
+  .result small { display: block; font-size: 16px; }
+  .result strong { display: block; font-size: clamp(48px, 6vw, 84px); font-weight: 700; letter-spacing: -0.045em; line-height: 1; margin-top: 8px; }
+  .result .yr { margin-top: 8px; font-size: 17px; }
+  .vs { border-top: 1.5px solid var(--ink); padding-top: 20px; font-size: 17px; }
+  .vs strong { font-weight: 700; }
+
+  /* Legend-style feature list */
+  .key { margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 48px; border-top: 2px solid var(--ink); }
+  .key-item { position: relative; display: flex; gap: 18px; padding: 18px 0; }
+  .key-item::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; border-top: 1.5px solid var(--ink); }
+  .key-item svg { flex: none; width: 40px; height: 40px; }
+  .key-item h3 { font-size: 19px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.25; }
+  .key-item p { margin-top: 6px; font-size: 16px; }
+
+  /* Pricing schedule */
+  .schedule { margin-top: 28px; overflow-x: auto; border: 2px solid var(--ink); background: var(--paper); }
+  table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 16px; }
+  th, td { text-align: left; padding: 16px 20px; border-bottom: 1.5px solid var(--ink); vertical-align: top; }
+  th + th, th + td, td + td { border-left: 1.5px solid var(--ink); }
+  thead th { font-weight: 700; font-size: 22px; letter-spacing: -0.02em; padding-top: 24px; }
+  thead th span { display: block; font-size: 15px; font-weight: 400; letter-spacing: 0; margin-top: 4px; }
+  tbody th { font-weight: 400; width: 34%; }
+  tr.price td { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; }
+  tr.price td span { font-size: 15px; font-weight: 400; letter-spacing: 0; }
+  tr:last-child td, tr:last-child th { border-bottom: 0; }
+  .yes { display: inline-block; width: 14px; height: 14px; background: var(--ink); vertical-align: middle; }
+  .no { display: inline-block; width: 14px; border-top: 1.5px solid var(--ink); vertical-align: middle; }
+  .col-pick { background: rgba(27,42,107,.06); }
+
+  /* Demo request */
+  .demo { border: 2px solid var(--ink); background: var(--ink); color: var(--ground); display: flex; flex-wrap: wrap; }
+  .demo-copy { flex: 1 1 420px; min-width: 0; padding: clamp(28px, 3.5vw, 48px); }
+  .demo-copy h2 { color: var(--ground); }
+  .demo-copy p { margin-top: 20px; font-size: 19px; max-width: 40ch; }
+  .demo form { flex: 1 1 380px; min-width: 0; padding: clamp(28px, 3.5vw, 48px); background: var(--paper); color: var(--ink); display: flex; flex-direction: column; gap: 18px; }
+  .demo label { display: flex; flex-direction: column; gap: 6px; font-size: 15px; font-weight: 600; }
+  .demo input[type=text], .demo input[type=email] { min-height: 52px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 2px; background: var(--ground); font: inherit; font-size: 17px; font-weight: 400; color: var(--ink); }
+  .demo .btn { margin-top: 6px; align-self: flex-start; }
+  .sent { font-size: 17px; font-weight: 600; }
+  [hidden] { display: none !important; }
+
+  footer { margin-top: clamp(52px, 5.5vw, 80px); border-top: 1.5px solid var(--ink); }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 32px; padding-top: 28px; padding-bottom: 32px; font-size: 15px; }
+  .foot-cols { display: flex; flex-wrap: wrap; gap: 48px; }
+  .foot-cols div { display: flex; flex-direction: column; gap: 8px; }
+  .foot-cols b { font-weight: 600; }
+
+  @media (max-width: 860px) {
+    .links { display: none; }
+    .dim { grid-template-columns: 1fr; gap: 32px; padding-left: 28px; }
+    .dim::before { top: 0; bottom: 0; left: 6px; right: auto; border-top: 0; border-left: 1.5px solid var(--ink); }
+    .dim::after { display: none; }
+    .step .dot { position: absolute; left: -28px; top: 4px; margin: 0; }
+    .step time { height: auto; margin-bottom: 6px; }
+    .calc-in { border-right: 0; border-bottom: 1.5px solid var(--ink); }
+    .titleblock { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tb.c4 { grid-column: span 2; }
+    .tb.end { border-right: 1.5px solid var(--ink); }
+    .tb:nth-child(even) { border-right: 0; }
+    .tb.c2, .tb.c4 { border-right: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .table { transition: none; } }
+
+  /* ================= Motion: the page draws itself ================= */
+  /* Scroll ruler under the header */
+  .ruler { position: absolute; left: 0; right: 0; bottom: -1.5px; height: 7px; pointer-events: none;
+    background: repeating-linear-gradient(90deg, rgba(27,42,107,.45) 0 1px, transparent 1px 40px) bottom / 100% 7px no-repeat; }
+  .ruler i { position: absolute; left: 0; bottom: 0; width: 100%; height: 3px; background: var(--ink); transform-origin: left; transform: scaleX(0); }
+
+  @keyframes rise { to { transform: none; } }
+  @keyframes fade { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes pop  { from { opacity: 0; transform: scale(.55); } to { opacity: 1; transform: none; } }
+  @keyframes ping { from { box-shadow: 0 0 0 0 rgba(27,42,107,.5); } to { box-shadow: 0 0 0 16px rgba(27,42,107,0); } }
+
+  /* Hero: words rise, the room is drawn, tables are placed, the evening plays */
+  .anim .hero h1 { clip-path: inset(0 0 100% 0); transform: translateY(.25em); animation: unmask 1.1s var(--ease) .1s forwards; }
+  @keyframes unmask { to { clip-path: inset(-10% -5% -20% -5%); transform: none; } }
+  .anim .hero-copy p, .anim .hero .ctas { opacity: 0; animation: fade .9s var(--ease) forwards; }
+  .anim .hero-copy p:nth-of-type(1) { animation-delay: .45s; }
+  .anim .hero-copy p:nth-of-type(2) { animation-delay: .55s; }
+  .anim .hero .ctas { animation-delay: .65s; }
+  .anim .frame rect { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.6s var(--ease) .3s forwards; }
+  .anim .kitchen, .anim .bar, .anim .door-label, .anim .hero figcaption { opacity: 0; animation: fade .8s var(--ease) 1.2s forwards; }
+  .anim .hero figcaption { animation-delay: 1.9s; }
+  .anim .table { opacity: 0; animation: pop .6s var(--ease) forwards; animation-delay: calc(1.15s + var(--i) * 60ms); }
+  .anim .plan.ready .table { opacity: 1; animation: none; }
+  .anim .plan.ready .table.just { animation: ping .7s var(--ease); }
+
+  /* Headings unmask upward, ledes follow */
+  .anim main h2 { clip-path: inset(0 0 100% 0); transform: translateY(.3em); transition: clip-path 1.1s var(--ease), transform 1.1s var(--ease); }
+  .anim main h2.in { clip-path: inset(-10% -5% -20% -5%); transform: none; }
+  .anim .lede { opacity: 0; transform: translateY(14px); transition: opacity .9s var(--ease) .2s, transform .9s var(--ease) .2s; }
+  .anim .lede.in { opacity: 1; transform: none; }
+
+  /* Dimension line draws, then each moment is marked */
+  .anim .dim::before { transform: scaleX(0); transform-origin: left; transition: transform 1.8s var(--ease); }
+  .anim .dim::after { opacity: 0; transition: opacity .6s .2s; }
+  .anim .dim.in::before { transform: none; }
+  .anim .dim.in::after { opacity: 1; }
+  .anim .dim .dot { transform: scale(0); transition: transform .5s var(--ease); transition-delay: calc(.35s + var(--i) * .25s); }
+  .anim .dim .step time, .anim .dim .step h3, .anim .dim .step p { opacity: 0; transform: translateY(14px); transition: opacity .8s var(--ease), transform .8s var(--ease); transition-delay: calc(.45s + var(--i) * .25s); }
+  .anim .dim.in .dot, .anim .dim.in .step time, .anim .dim.in .step h3, .anim .dim.in .step p { opacity: 1; transform: none; }
+
+  /* Title block fills in cell by cell, as if written */
+  .anim .titleblock .tb > * { clip-path: inset(0 100% 0 0); transition: clip-path .9s var(--ease); transition-delay: calc(.15s + var(--i) * 85ms); }
+  .anim .titleblock.in .tb > * { clip-path: inset(-10% -10% -10% 0); }
+  .anim .ticks li { opacity: 0; transition: opacity .7s var(--ease); }
+  .anim .ticks li::before { transform: translateY(-4px) scaleX(0); transform-origin: left; transition: transform .6s var(--ease); }
+  .anim .ticks.in li { opacity: 1; }
+  .anim .ticks.in li::before { transform: translateY(-4px); }
+  .anim .ticks li:nth-child(2), .anim .ticks li:nth-child(2)::before { transition-delay: .15s; }
+  .anim .ticks li:nth-child(3), .anim .ticks li:nth-child(3)::before { transition-delay: .3s; }
+
+  /* Calculator unrolls like a sheet */
+  .anim .calc { clip-path: inset(0 0 100% 0); transition: clip-path 1.3s var(--ease); }
+  .anim .calc.in { clip-path: inset(-24px); }
+  .result strong, #save { display: inline-block; }
+  .bump { animation: bump .35s var(--ease); }
+  @keyframes bump { 40% { transform: translateY(-3px); } }
+
+  /* Legend: rules draw across, symbols are traced */
+  .anim .key-item::after { transform: scaleX(0); transform-origin: left; transition: transform 1.1s var(--ease); transition-delay: calc(var(--i) * 90ms); }
+  .anim .key-item h3, .anim .key-item p { opacity: 0; transition: opacity .8s var(--ease); transition-delay: calc(.25s + var(--i) * 90ms); }
+  .anim .key-item svg * { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.5s var(--ease); transition-delay: calc(var(--i) * 90ms); }
+  .anim .key.in .key-item::after { transform: none; }
+  .anim .key.in .key-item h3, .anim .key.in .key-item p { opacity: 1; }
+  .anim .key.in .key-item svg * { stroke-dashoffset: 0; }
+
+  /* Schedule: rows slide in, marks are stamped */
+  .anim .schedule tbody tr { opacity: 0; transform: translateX(-10px); transition: opacity .6s var(--ease), transform .6s var(--ease); transition-delay: calc(.15s + var(--i) * 55ms); }
+  .anim .schedule .yes { transform: scale(0); transition: transform .45s var(--ease); transition-delay: calc(.4s + var(--i) * 55ms); }
+  .anim .schedule.in tbody tr { opacity: 1; transform: none; }
+  .anim .schedule.in .yes { transform: none; }
+
+  /* Demo panel wipes open */
+  .anim .demo { clip-path: inset(0 100% 0 0); transition: clip-path 1.4s var(--ease); }
+  .anim .demo.in { clip-path: inset(-24px); }
+  .anim .sent { animation: fade .7s var(--ease); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="logo" href="#top">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="2" width="20" height="20"/><circle cx="12" cy="12" r="5"/></svg>
+      coperto
+    </a>
+    <nav class="links" aria-label="Principale">
+      <a href="#serata">Come funziona</a>
+      <a href="#ospiti">Ospiti</a>
+      <a href="#prezzi">Prezzi</a>
+      <a href="#accedi">Accedi</a>
+    </nav>
+    <a class="btn btn-line" href="#demo">Prenota una demo</a>
+  </div>
+  <div class="ruler" aria-hidden="true"><i id="rulerFill"></i></div>
+</header>
+
+<main id="top">
+
+  <!-- Hero -->
+  <section class="wrap hero">
+    <div class="hero-copy">
+      <h1>Sai sempre chi siede dove.</h1>
+      <p>Coperto disegna la tua sala com’è davvero e la tiene aggiornata per tutto il servizio: chi è seduto, chi sta arrivando, quale tavolo si libera tra poco.</p>
+      <p>Prenotazioni da Google, Instagram e dal tuo sito, senza commissioni a coperto.</p>
+      <div class="ctas">
+        <a class="btn btn-fill" href="#demo">Disegna la tua sala</a>
+        <a class="link" href="#serata">Come funziona</a>
+      </div>
+    </div>
+
+    <figure>
+      <div class="plan drawing" id="plan" role="img" aria-label="Pianta della sala con lo stato dei tavoli all'ora selezionata">
+        <svg class="frame" viewBox="0 0 160 100" aria-hidden="true"><rect x="0" y="0" width="160" height="100" pathLength="1"/></svg>
+        <div class="kitchen"><span>Cucina</span></div>
+        <div class="bar"><span>Banco</span></div>
+        <div class="door"></div>
+        <span class="door-label">Ingresso</span>
+      </div>
+      <figcaption>
+        <div class="scrub">
+          <label for="ora">Ora del servizio <span class="clock" id="clock">20:30</span></label>
+          <input id="ora" type="range" min="0" max="16" step="1" value="6">
+          <div class="counts" aria-live="polite">
+            <span><strong id="seated">0</strong> coperti a tavola</span>
+            <span><strong id="arriving">0</strong> in arrivo</span>
+          </div>
+        </div>
+        <div class="legend">
+          <span><span class="sw" style="background:#1B2A6B"></span>Seduti</span>
+          <span><span class="sw" style="border:2px dashed #1B2A6B"></span>In arrivo entro 30 minuti</span>
+          <span><span class="sw" style="border:1.5px solid #1B2A6B"></span>Libero</span>
+          <span>Trascina l’ora per vedere la serata.</span>
+        </div>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- A reservation, from booking to bill -->
+  <section class="wrap section" id="serata">
+    <div class="night-head">
+      <h2>Una prenotazione,<br>dall’inizio al conto.</h2>
+      <p class="lede" style="max-width:40ch">Coperto segue ogni ospite dal momento in cui prenota a quello in cui paga, così la sala lavora con tutte le informazioni giuste al momento giusto.</p>
+    </div>
+    <ol class="dim" style="list-style:none;padding-right:0">
+      <li class="step">
+        <time>Martedì, 11:02</time>
+        <div class="dot"></div>
+        <h3>Prenota</h3>
+        <p>Giulia trova il ristorante su Google e prenota per venerdì in tre tocchi. Nessuna app da scaricare.</p>
+      </li>
+      <li class="step">
+        <time>Giovedì, 20:30</time>
+        <div class="dot"></div>
+        <h3>Conferma</h3>
+        <p>Il giorno prima riceve un messaggio su WhatsApp. Conferma con un tocco, oppure libera il tavolo per qualcun altro.</p>
+      </li>
+      <li class="step">
+        <time>Venerdì, 20:27</time>
+        <div class="dot"></div>
+        <h3>Arriva</h3>
+        <p>Chi accoglie vede già il suo nome, che è celiaca e che stasera festeggia l’anniversario.</p>
+      </li>
+      <li class="step">
+        <time>Venerdì, 20:30</time>
+        <div class="dot"></div>
+        <h3>Si siede</h3>
+        <p>Il tavolo 12 si colora sulla pianta. La cucina sa già che c’è un piatto senza glutine.</p>
+      </li>
+      <li class="step">
+        <time>Venerdì, 22:40</time>
+        <div class="dot"></div>
+        <h3>Paga</h3>
+        <p>Il conto si collega al suo profilo. La prossima volta saprete cosa ha bevuto.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- Guest profile -->
+  <section class="wrap section" id="ospiti">
+    <div class="split">
+      <div>
+        <h2>Il tuo personale riconosce chi torna.</h2>
+        <p class="lede">Ogni ospite ha la sua scheda, compilata da sola servizio dopo servizio. Resta al ristorante anche quando cambia il personale, e i dati sono tuoi: li esporti quando vuoi.</p>
+        <ul class="ticks">
+          <li>Allergie e preferenze, visibili a sala e cucina</li>
+          <li>Storico delle visite e della spesa, collegato alla cassa</li>
+          <li>Compleanni e anniversari, con un promemoria il giorno prima</li>
+        </ul>
+      </div>
+      <div>
+        <div class="titleblock" role="group" aria-label="Esempio di scheda ospite">
+          <div class="tb c2 big"><small>Ospite</small><strong>Giulia Romano</strong></div>
+          <div class="tb big"><small>Visite</small><strong>14</strong></div>
+          <div class="tb big end"><small>No-show</small><strong>0</strong></div>
+          <div class="tb"><small>Cliente dal</small><strong>marzo 2023</strong></div>
+          <div class="tb"><small>Tavolo preferito</small><strong>12, finestra</strong></div>
+          <div class="tb"><small>Allergie</small><strong>Celiachia</strong></div>
+          <div class="tb end"><small>Ricorrenza</small><strong>Anniversario, 30 ottobre</strong></div>
+          <div class="tb c2"><small>Ultima visita</small><strong>12 settembre, 4 persone, tavolo 12</strong></div>
+          <div class="tb c2 end"><small>Ha bevuto</small><strong>Brunello di Montalcino 2016</strong></div>
+          <div class="tb c4 end last"><small>Nota della sala</small><strong>Preferisce l’acqua frizzante. Proporre la nuova annata del Brunello.</strong></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Commission calculator -->
+  <section class="wrap section" id="commissioni">
+    <h2>Quanto ti costano<br>le commissioni?</h2>
+    <p class="lede">Le piattaforme a commissione si fanno pagare ogni coperto prenotato online. Inserisci i tuoi numeri e guarda la cifra.</p>
+    <div class="calc">
+      <div class="calc-in">
+        <div class="field">
+          <label for="covers">Coperti prenotati online al mese <output id="coversOut" for="covers">600</output></label>
+          <input id="covers" type="range" min="50" max="3000" step="50" value="600">
+        </div>
+        <div class="field">
+          <label for="fee">La tua commissione per coperto</label>
+          <div class="money" style="margin-top:10px">
+            <input id="fee" type="number" min="0" step="0.25" value="2.00" inputmode="decimal">
+            <span>€</span>
+          </div>
+          <p class="note" style="margin-top:10px">La trovi nel contratto o nella fattura della tua piattaforma attuale.</p>
+        </div>
+      </div>
+      <div class="calc-out drawing" aria-live="polite">
+        <div class="result">
+          <small>Con una piattaforma a commissione paghi</small>
+          <strong id="monthly">1.200 €</strong>
+          <p class="yr">al mese, cioè <b id="yearly">14.400 €</b> all’anno.</p>
+        </div>
+        <p class="vs" id="vs">Con Coperto Sala paghi <strong>19,99 € al mese</strong>, che tu faccia cento coperti o tremila. Risparmi <strong id="save">0 €</strong> all’anno.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features as a drawing legend -->
+  <section class="wrap section" id="funzioni">
+    <h2>Tutto il resto.</h2>
+    <div class="key">
+      <div class="key-item">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="20" cy="20" r="15"/><path d="M5 20h30M20 5c4.5 4.2 6.6 9.2 6.6 15S24.5 30.8 20 35c-4.5-4.2-6.6-9.2-6.6-15S15.5 9.2 20 5z"/></svg>
+        <div><h3>Prenota ovunque</h3><p>Google, Instagram, il tuo sito e un link da condividere. In italiano, inglese, tedesco e francese.</p></div>
+      </div>
+      <div class="key-item">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M7 9h26v18H17l-7 6v-6H7z"/><path d="m14 18 4 4 8-8"/></svg>
+        <div><h3>Promemoria su WhatsApp</h3><p>Conferma automatica il giorno prima. Chi non può venire libera il tavolo con un tocco.</p></div>
+      </div>
+      <div class="key-item">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="10" width="30" height="20"/><path d="M5 16h30M10 25h8"/></svg>
+        <div><h3>Caparra e carta a garanzia</h3><p>Per i gruppi, le serate di punta e i menu degustazione. Le regole le decidi tu.</p></div>
+      </div>
+      <div class="key-item">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="20" cy="22" r="13"/><path d="M20 15v7l5 4M15 4h10"/></svg>
+        <div><h3>Lista d’attesa</h3><p>Chi arriva senza prenotare lascia il numero e riceve un messaggio quando il tavolo è pronto.</p></div>
+      </div>
+      <div class="key-item">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="14" width="12" height="20"/><rect x="23" y="6" width="12" height="28"/><path d="M9 20h4M9 26h4M27 12h4M27 18h4M27 24h4"/></svg>
+        <div><h3>Più sedi, una sola agenda ospiti</h3><p>Per gruppi e hotel: ogni locale con la sua sala, un unico archivio clienti e permessi per ruolo.</p></div>
+      </div>
+      <div class="key-item">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 5h20v30l-4-3-3 3-3-3-3 3-3-3-4 3z"/><path d="M15 13h10M15 19h10M15 25h6"/></svg>
+        <div><h3>Collegato alla cassa</h3><p>Lo scontrino finisce nella scheda dell’ospite. Sai chi spende, cosa ordina e quando torna.</p></div>
+      </div>
+      <div class="key-item">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 34h28M10 34V22M18 34V10M26 34V18"/></svg>
+        <div><h3>Il resoconto del mattino</h3><p>Coperti, giro tavoli e no-show della sera prima, in un messaggio alle 9.</p></div>
+      </div>
+      <div class="key-item">
+        <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M20 5l13 5v9c0 8-5.6 14.2-13 16-7.4-1.8-13-8-13-16v-9z"/><rect x="15" y="18" width="10" height="8"/><path d="M17 18v-3a3 3 0 0 1 6 0v3"/></svg>
+        <div><h3>Dati in Europa, conformi al GDPR</h3><p>I dati dei tuoi ospiti restano tuoi. Non li usiamo per mandarli da un altro ristorante.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing schedule -->
+  <section class="wrap section" id="prezzi">
+    <h2>Un canone fisso.<br>Zero commissioni.</h2>
+    <p class="lede">Prova gratuita di [DURATA PROVA], senza carta. Disdici quando vuoi.</p>
+    <div class="schedule" tabindex="0" role="region" aria-label="Tabella dei piani">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col"><span style="margin:0">Cosa include</span></th>
+            <th scope="col">Banco<span>Per trattorie, pizzerie, enoteche</span></th>
+            <th scope="col" class="col-pick">Sala<span>Per chi vuole il pieno controllo</span></th>
+            <th scope="col">Gruppo<span>Per più sedi e hotel</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="price">
+            <th scope="row" style="font-size:16px">Canone</th>
+            <td><b class="pr" data-price="9.99">9,99</b> € <span>/mese</span></td>
+            <td class="col-pick"><b class="pr" data-price="19.99">19,99</b> € <span>/mese</span></td>
+            <td>Su misura</td>
+          </tr>
+          <tr><th scope="row">Prenotazioni illimitate, zero commissioni</th><td><span class="yes" aria-label="Incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+          <tr><th scope="row">Google, Instagram e widget per il sito</th><td><span class="yes" aria-label="Incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+          <tr><th scope="row">Promemoria WhatsApp e lista d’attesa</th><td><span class="yes" aria-label="Incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+          <tr><th scope="row">Pianta della sala in tempo reale</th><td><span class="no" aria-label="Non incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+          <tr><th scope="row">Schede ospite e note di sala</th><td><span class="no" aria-label="Non incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+          <tr><th scope="row">Caparre e carta a garanzia</th><td><span class="no" aria-label="Non incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+          <tr><th scope="row">Collegamento alla cassa</th><td><span class="no" aria-label="Non incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+          <tr><th scope="row">Più sedi, archivio ospiti condiviso</th><td><span class="no" aria-label="Non incluso"></span></td><td class="col-pick"><span class="no" aria-label="Non incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+          <tr><th scope="row">Avvio con un nostro referente in sala</th><td><span class="no" aria-label="Non incluso"></span></td><td class="col-pick"><span class="no" aria-label="Non incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Demo request -->
+  <section class="wrap section" id="demo">
+    <div class="demo">
+      <div class="demo-copy">
+        <h2>Mandaci la tua sala.<br>La disegniamo noi.</h2>
+        <p>Lasciaci due righe: ti chiamiamo, ci mandi una foto o una piantina della sala e alla demo la trovi già disegnata su Coperto.</p>
+      </div>
+      <form id="demoForm" novalidate>
+        <div id="formFields" style="display:flex;flex-direction:column;gap:18px">
+          <label>Nome del ristorante<input type="text" name="ristorante" required autocomplete="organization"></label>
+          <label>Città<input type="text" name="citta" required autocomplete="address-level2"></label>
+          <label>Email<input type="email" name="email" required autocomplete="email"></label>
+          <button class="btn btn-fill" type="submit">Richiedi la demo</button>
+          <p class="note" id="formError" role="alert" hidden>Compila tutti i campi con un’email valida.</p>
+        </div>
+        <p class="sent" id="formSent" role="status" hidden>Richiesta inviata. Ti scriviamo entro un giorno lavorativo per fissare la demo.</p>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="logo" href="#top">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="2" width="20" height="20"/><circle cx="12" cy="12" r="5"/></svg>
+        coperto
+      </a>
+      <p style="margin-top:12px">Fatto in Italia, per i ristoranti italiani.</p>
+      <p style="margin-top:4px">© 2026 [RAGIONE SOCIALE], P.IVA [PARTITA IVA]</p>
+    </div>
+    <div class="foot-cols">
+      <div><b>Prodotto</b><a href="#serata">Come funziona</a><a href="#funzioni">Funzioni</a><a href="#prezzi">Prezzi</a></div>
+      <div><b>Azienda</b><a href="#top">Chi siamo</a><a href="#top">Lavora con noi</a><a href="#demo">Contatti</a></div>
+      <div><b>Legale</b><a href="#top">Privacy</a><a href="#top">Termini</a><a href="#top">Cookie</a></div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  /* ---------- Floor plan ---------- */
+  // Booking slots are 15-minute steps from 19:00 (0) to 23:00 (16).
+  const tables = [
+    { id: 'T1',  x: 5,  y: 8,  w: 8,  round: true, seats: 2, b: [[2, 8, 'Romano'], [10, 15, 'Ferri']] },
+    { id: 'T2',  x: 17, y: 8,  w: 8,  round: true, seats: 2, b: [[0, 6, 'Conti'], [9, 14, 'Galli']] },
+    { id: 'T3',  x: 29, y: 8,  w: 8,  round: true, seats: 2, b: [[4, 10, 'Bianchi']] },
+    { id: 'T10', x: 43, y: 8,  w: 11, round: true, seats: 6, b: [[6, 13, 'Colombo']] },
+    { id: 'T4',  x: 5,  y: 37, w: 8,  seats: 4, b: [[1, 7, 'Marino'], [8, 13, 'Greco']] },
+    { id: 'T5',  x: 17, y: 37, w: 8,  seats: 4, b: [[6, 12, 'Lombardi']] },
+    { id: 'T6',  x: 29, y: 37, w: 19, seats: 8, b: [[3, 11, 'Esposito']] },
+    { id: 'T12', x: 56, y: 37, w: 11, round: true, seats: 5, b: [[8, 15, 'Laurent']] },
+    { id: 'T8',  x: 5,  y: 66, w: 8,  seats: 4, b: [[5, 10, 'Ricci'], [11, 16, 'Costa']] },
+    { id: 'T9',  x: 17, y: 66, w: 19, seats: 6, b: [[2, 9, 'Bruno']] },
+    { id: 'T11', x: 42, y: 66, w: 8,  seats: 2, b: [[0, 5, 'Fontana'], [7, 12, 'Moretti']] },
+    { id: 'T14', x: 56, y: 66, w: 8,  seats: 2, b: [[4, 9, 'Rinaldi']] },
+    { id: 'T15', x: 70, y: 66, w: 8,  seats: 4, b: [[10, 16, 'Caruso']] }
+  ];
+  const ANIM = document.documentElement.classList.contains('anim');
+  const RATIO = 1.6; // the plan is 16:10, so a square needs 1.6× its width in height-%
+  const plan = document.getElementById('plan');
+  const prevState = [];
+  const els = tables.map((d, i) => {
+    const el = document.createElement('div');
+    el.className = 'table' + (d.round ? ' round' : '');
+    el.style.setProperty('--i', i);
+    const h = d.w <= 11 ? d.w * RATIO : 8 * RATIO;
+    Object.assign(el.style, { left: d.x + '%', top: d.y + '%', width: d.w + '%', height: h + '%' });
+    el.innerHTML = '<b>' + d.id + '</b><i></i>';
+    plan.appendChild(el);
+    return el;
+  });
+  function renderPlan(t) {
+    let seated = 0, arriving = 0;
+    tables.forEach((d, i) => {
+      let state = 'free', label = '';
+      const now = d.b.find(([s, e]) => s <= t && t < e);
+      if (now) { state = 'seated'; label = now[2]; seated += d.seats; }
+      else {
+        const next = d.b.find(([s]) => s > t && s - t <= 2);
+        if (next) { state = 'arriving'; label = next[2]; arriving++; }
+      }
+      const el = els[i];
+      el.classList.toggle('seated', state === 'seated');
+      el.classList.toggle('arriving', state === 'arriving');
+      el.querySelector('i').textContent = label;
+      // A table that has just been seated sends out a ring
+      if (prevState[i] !== undefined && state === 'seated' && prevState[i] !== 'seated') {
+        el.classList.remove('just'); void el.offsetWidth; el.classList.add('just');
+      }
+      prevState[i] = state;
+    });
+    const mins = 19 * 60 + t * 15;
+    document.getElementById('clock').textContent = Math.floor(mins / 60) + ':' + String(mins % 60).padStart(2, '0');
+    document.getElementById('seated').textContent = seated;
+    document.getElementById('arriving').textContent = arriving;
+  }
+  const slider = document.getElementById('ora');
+  let autoplay = null;
+  const stopAutoplay = () => { clearInterval(autoplay); autoplay = null; plan.classList.add('ready'); };
+  slider.addEventListener('input', () => { if (autoplay) stopAutoplay(); renderPlan(+slider.value); });
+
+  if (ANIM) {
+    // Opening moment: once the tables are placed, the evening plays from 19:00 to 20:30.
+    slider.value = 0; renderPlan(0);
+    setTimeout(() => {
+      plan.classList.add('ready');
+      let t = 0;
+      autoplay = setInterval(() => {
+        t++; slider.value = t; renderPlan(t);
+        if (t >= 6) stopAutoplay();
+      }, 260);
+    }, 2600);
+  } else {
+    renderPlan(+slider.value);
+  }
+
+  /* ---------- Number tweening ---------- */
+  function tween(el, to, format, ms = 500) {
+    const from = el._v ?? to;
+    el._v = to;
+    if (!ANIM || from === to) { el.textContent = format(to); return; }
+    const start = performance.now();
+    cancelAnimationFrame(el._raf);
+    const step = (now) => {
+      const p = Math.min(1, (now - start) / ms);
+      const e = 1 - Math.pow(1 - p, 3);
+      el.textContent = format(from + (to - from) * e);
+      if (p < 1) el._raf = requestAnimationFrame(step);
+    };
+    el._raf = requestAnimationFrame(step);
+  }
+
+  /* ---------- Commission calculator ---------- */
+  const eur = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 0 });
+  const eur2 = new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const SALA = 19.99;
+  const covers = document.getElementById('covers');
+  const fee = document.getElementById('fee');
+  const money = (v) => eur.format(Math.round(v)) + ' €';
+  function renderCalc() {
+    const c = +covers.value;
+    const f = Math.max(0, parseFloat(String(fee.value).replace(',', '.')) || 0);
+    const monthly = c * f;
+    document.getElementById('coversOut').textContent = eur.format(c);
+    tween(document.getElementById('monthly'), monthly, money);
+    tween(document.getElementById('yearly'), monthly * 12, money);
+    const vs = document.getElementById('vs');
+    if (monthly > SALA) {
+      if (!document.getElementById('save')) {
+        vs.innerHTML = 'Con Coperto Sala paghi <strong>19,99 € al mese</strong>, che tu faccia cento coperti o tremila. Risparmi <strong id="save">0 €</strong> all’anno.';
+      }
+      tween(document.getElementById('save'), (monthly - SALA) * 12, money);
+    } else {
+      vs.innerHTML = 'Con così pochi coperti online la commissione costa poco. Parti con <strong>Banco a 9,99 € al mese</strong> e passa a Sala quando cresci.';
+    }
+  }
+  covers.addEventListener('input', renderCalc);
+  fee.addEventListener('input', renderCalc);
+  renderCalc();
+
+  /* ---------- Scroll ruler ---------- */
+  const rulerFill = document.getElementById('rulerFill');
+  let ticking = false;
+  function updateRuler() {
+    const max = document.documentElement.scrollHeight - innerHeight;
+    rulerFill.style.transform = 'scaleX(' + (max > 0 ? scrollY / max : 0) + ')';
+    ticking = false;
+  }
+  addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(updateRuler); } }, { passive: true });
+  updateRuler();
+
+  /* ---------- Reveal choreography ---------- */
+  document.querySelectorAll('.dim .step').forEach((el, i) => el.style.setProperty('--i', i));
+  document.querySelectorAll('.titleblock .tb').forEach((el, i) => el.style.setProperty('--i', i));
+  document.querySelectorAll('.key-item').forEach((el, i) => el.style.setProperty('--i', i));
+  document.querySelectorAll('.schedule tbody tr').forEach((el, i) => el.style.setProperty('--i', i));
+  document.querySelectorAll('.key-item svg').forEach((svg) =>
+    svg.querySelectorAll('path, rect, circle').forEach((s) => s.setAttribute('pathLength', '1')));
+
+  function countPrices() {
+    document.querySelectorAll('.pr').forEach((el) => {
+      el._v = 0;
+      tween(el, parseFloat(el.dataset.price), (v) => eur2.format(v), 900);
+    });
+  }
+
+  // Observe each section (never the clipped elements themselves: a fully clipped
+  // element never reports as visible), then reveal everything inside it.
+  const REVEAL = 'h2, .lede, .dim, .titleblock, .ticks, .calc, .key, .schedule, .demo';
+  const reveal = (section) => {
+    section.querySelectorAll(REVEAL).forEach((el) => el.classList.add('in'));
+    if (section.id === 'prezzi') countPrices();
+  };
+  const sections = document.querySelectorAll('main .section');
+  if (ANIM && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (!en.isIntersecting) return;
+        reveal(en.target);
+        io.unobserve(en.target);
+      });
+    }, { threshold: 0, rootMargin: '0px 0px -15% 0px' });
+    sections.forEach((s) => io.observe(s));
+  } else {
+    sections.forEach((s) => s.querySelectorAll(REVEAL).forEach((el) => el.classList.add('in')));
+  }
+
+  /* ---------- Demo form (front-end only: connect to your backend or form service) ---------- */
+  const form = document.getElementById('demoForm');
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const ok = [...form.querySelectorAll('input')].every((i) => i.value.trim() && i.checkValidity());
+    document.getElementById('formError').hidden = ok;
+    if (!ok) return;
+    document.getElementById('formFields').hidden = true;
+    const sent = document.getElementById('formSent');
+    sent.hidden = false;
+    sent.setAttribute('tabindex', '-1');
+    sent.focus();
+  });
+</script>
+</body>
+</html>
