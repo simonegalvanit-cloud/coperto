@@ -87,7 +87,83 @@ export const closures = pgTable(
 
 export const tableShape = pgEnum("table_shape", ["square", "round", "rect"]);
 
-// Positions and sizes are in floor-plan units: the room is drawn on a 1000 × 625 canvas.
+// Floor plans are measured in centimetres: a table 80 wide is 80 cm, a floor 1400 wide is 14 m.
+
+export const floors = pgTable(
+  "floors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // -1 basement, 0 ground floor, 1 first floor…
+    level: integer("level").notNull().default(0),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [index("floors_restaurant_idx").on(t.restaurantId)],
+);
+
+/** A named area of a floor: a room, the terrace, a private corner. Tables inside it belong to it. */
+export const zones = pgTable(
+  "zones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    floorId: uuid("floor_id")
+      .notNull()
+      .references(() => floors.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    bookableOnline: boolean("bookable_online").notNull().default(true),
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+    w: integer("w").notNull(),
+    h: integer("h").notNull(),
+  },
+  (t) => [index("zones_restaurant_idx").on(t.restaurantId)],
+);
+
+export const fixtureKind = pgEnum("fixture_kind", [
+  "wall",
+  "door",
+  "window",
+  "kitchen",
+  "bar",
+  "cash",
+  "stairs",
+  "toilets",
+  "column",
+  "plant",
+  "entrance",
+  "station",
+  "other",
+]);
+
+/** Everything on the plan that isn't a table: walls, doors, kitchen, till, stairs… */
+export const fixtures = pgTable(
+  "fixtures",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    floorId: uuid("floor_id")
+      .notNull()
+      .references(() => floors.id, { onDelete: "cascade" }),
+    kind: fixtureKind("kind").notNull(),
+    label: text("label").notNull().default(""),
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+    w: integer("w").notNull(),
+    h: integer("h").notNull(),
+  },
+  (t) => [index("fixtures_restaurant_idx").on(t.restaurantId)],
+);
+
 export const diningTables = pgTable(
   "dining_tables",
   {
@@ -95,8 +171,17 @@ export const diningTables = pgTable(
     restaurantId: uuid("restaurant_id")
       .notNull()
       .references(() => restaurants.id, { onDelete: "cascade" }),
+    floorId: uuid("floor_id")
+      .notNull()
+      .references(() => floors.id, { onDelete: "cascade" }),
+    // Derived from position when the plan is saved: the zone the table's centre sits in.
+    zoneId: uuid("zone_id").references(() => zones.id, { onDelete: "set null" }),
     label: text("label").notNull(),
+    // The most people it seats.
     seats: integer("seats").notNull(),
+    // The fewest people it's given to online, so a couple doesn't take an 8-top.
+    minCovers: integer("min_covers").notNull().default(1),
+    bookableOnline: boolean("bookable_online").notNull().default(true),
     shape: tableShape("shape").notNull(),
     x: integer("x").notNull(),
     y: integer("y").notNull(),
@@ -147,4 +232,8 @@ export type Restaurant = typeof restaurants.$inferSelect;
 export type ServiceHour = typeof serviceHours.$inferSelect;
 export type Reservation = typeof reservations.$inferSelect;
 export type DiningTable = typeof diningTables.$inferSelect;
+export type Floor = typeof floors.$inferSelect;
+export type Zone = typeof zones.$inferSelect;
+export type Fixture = typeof fixtures.$inferSelect;
+export type FixtureKind = (typeof fixtureKind.enumValues)[number];
 export type ReservationStatus = (typeof reservationStatus.enumValues)[number];

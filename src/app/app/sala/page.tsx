@@ -4,6 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { requireAccount } from "@/lib/auth";
+import { loadPlan } from "@/lib/plan";
 import type { FloorBooking } from "@/lib/floor";
 import { addDays, capitalize, formatDate, isDate, nowIn, toMinutes, weekdayOf } from "@/lib/time";
 import { FloorLive } from "./FloorLive";
@@ -18,8 +19,8 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
   const isToday = date === now.date;
 
   const db = await getDb();
-  const [tables, rows, services] = await Promise.all([
-    db.select().from(schema.diningTables).where(eq(schema.diningTables.restaurantId, restaurant.id)).orderBy(asc(schema.diningTables.label)),
+  const [plan, rows, services] = await Promise.all([
+    loadPlan(restaurant.id),
     db
       .select()
       .from(schema.reservations)
@@ -31,16 +32,16 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
       .orderBy(asc(schema.serviceHours.startTime)),
   ]);
 
-  if (tables.length === 0) {
+  if (plan.tables.length === 0) {
     return (
       <div className="panel drawing stack" style={{ maxWidth: 640 }}>
-        <h1>La tua sala</h1>
+        <h1>Il tuo locale</h1>
         <p>
-          Disegna i tavoli come sono davvero: poi qui vedi chi è seduto, chi sta arrivando e quale tavolo si libera, per tutto il
+          Disegna piani, sale, cucina, bar e tavoli come sono davvero: poi qui vedi chi è seduto, chi sta arrivando e quale tavolo si libera, per tutto il
           servizio.
         </p>
         <p>
-          <Link className="btn btn-fill" href="/app/sala/modifica">Disegna la sala</Link>
+          <Link className="btn btn-fill" href="/app/sala/modifica">Disegna il locale</Link>
         </p>
       </div>
     );
@@ -91,7 +92,10 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
         range={{ from, to }}
         startAt={Math.min(to, Math.max(from, startAt))}
         durationMinutes={restaurant.durationMinutes}
-        tables={tables}
+        floors={plan.floors}
+        zones={plan.zones}
+        fixtures={plan.fixtures}
+        tables={plan.tables}
         bookings={bookings}
       />
     </>

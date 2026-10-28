@@ -1,8 +1,22 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { autoAssign, conflictOn, tableStates, type FloorBooking, type PlanTable } from "../src/lib/floor";
+import { autoAssign, conflictOn, tableForOnline, tableStates, zoneFor, type FloorBooking, type PlanTable } from "../src/lib/floor";
 
-const table = (id: string, seats: number): PlanTable => ({ id, label: id, seats, shape: "square", x: 0, y: 0, w: 80, h: 80 });
+const table = (id: string, seats: number, extra: Partial<PlanTable> = {}): PlanTable => ({
+  id,
+  label: id,
+  seats,
+  minCovers: 1,
+  bookableOnline: true,
+  floorId: "F",
+  zoneId: null,
+  shape: "square",
+  x: 0,
+  y: 0,
+  w: 80,
+  h: 80,
+  ...extra,
+});
 let n = 0;
 const booking = (time: string, partySize: number, extra: Partial<FloorBooking> = {}): FloorBooking => ({
   id: `b${++n}`,
@@ -80,5 +94,78 @@ describe("autoAssign", () => {
     const result = autoAssign(tables, [placed, later, tooEarly]);
     assert.equal(result.get(later.id), "T1");
     assert.equal(result.has(tooEarly.id), false);
+  });
+});
+
+describe("autoAssign with minimum covers", () => {
+  it("prefers tables meant for the party size, but still uses others when needed", () => {
+    const tables = [table("eight", 8, { minCovers: 5 }), table("four", 4)];
+    const a = booking("20:00", 2);
+    const b = booking("20:00", 2);
+    const result = autoAssign(tables, [a, b]);
+    assert.equal(result.get(a.id), "four");
+    assert.equal(result.get(b.id), "eight");
+  });
+});
+
+describe("tableForOnline", () => {
+  const zones = [
+    { id: "in", bookableOnline: true },
+    { id: "out", bookableOnline: true },
+    { id: "vip", bookableOnline: false },
+  ];
+  const req = (time: string, partySize: number) => ({ id: "new", time, durationMinutes: 120, partySize });
+
+  it("picks the smallest suitable table", () => {
+    const tables = [table("T6", 6), table("T2", 2), table("T4", 4)];
+    assert.equal(tableForOnline(tables, zones, [], req("20:00", 2)), "T2");
+    assert.equal(tableForOnline(tables, zones, [], req("20:00", 3)), "T4");
+    assert.equal(tableForOnline(tables, zones, [], req("20:00", 7)), null);
+  });
+
+  it("respects minimum covers, online flags and closed zones", () => {
+    assert.equal(tableForOnline([table("big", 8, { minCovers: 5 })], zones, [], req("20:00", 2)), null);
+    assert.equal(tableForOnline([table("kept", 4, { bookableOnline: false })], zones, [], req("20:00", 2)), null);
+    assert.equal(tableForOnline([table("v", 4, { zoneId: "vip" })], zones, [], req("20:00", 2)), null);
+  });
+
+  it("filters by the zone the guest chose", () => {
+    const tables = [table("in1", 4, { zoneId: "in" }), table("out1", 4, { zoneId: "out" })];
+    assert.equal(tableForOnline(tables, zones, [], req("20:00", 2), "out"), "out1");
+    assert.equal(tableForOnline(tables, zones, [], req("20:00", 2), "in"), "in1");
+  });
+
+  it("skips tables taken during the stay", () => {
+    const tables = [table("T1", 4), table("T2", 4)];
+    const taken = booking("19:00", 2, { tableId: "T1" });
+    assert.equal(tableForOnline(tables, zones, [taken], req("20:00", 2)), "T2");
+    assert.equal(tableForOnline(tables, zones, [taken], req("21:00", 2)), "T1");
+  });
+
+  it("leaves room for parties already booked without a table", () => {
+    const tables = [table("T4", 4)];
+    const phoned = booking("20:00", 4);
+    assert.equal(tableForOnline(tables, zones, [phoned], req("20:30", 2)), null);
+    assert.equal(tableForOnline(tables, zones, [phoned], req("22:00", 2)), "T4");
+  });
+
+  it("doesn't let staff overbooking block every later booking", () => {
+    // Two unassigned parties of 4 and only one table: one already can't be seated.
+    const tables = [table("T4", 4), table("T2", 2)];
+    const over = [booking("20:00", 4), booking("20:00", 4)];
+    assert.equal(tableForOnline(tables, zones, over, req("20:00", 2)), "T2");
+  });
+});
+
+describe("zoneFor", () => {
+  it("picks the smallest zone containing the table's centre on the same floor", () => {
+    const zones = [
+      { id: "room", floorId: "F", x: 0, y: 0, w: 1000, h: 600 },
+      { id: "corner", floorId: "F", x: 0, y: 0, w: 300, h: 300 },
+      { id: "upstairs", floorId: "G", x: 0, y: 0, w: 1000, h: 600 },
+    ];
+    assert.equal(zoneFor(table("a", 2, { x: 100, y: 100, w: 70, h: 70 }), zones)?.id, "corner");
+    assert.equal(zoneFor(table("b", 2, { x: 500, y: 100, w: 70, h: 70 }), zones)?.id, "room");
+    assert.equal(zoneFor(table("c", 2, { x: 2000, y: 100, w: 70, h: 70 }), zones), undefined);
   });
 });

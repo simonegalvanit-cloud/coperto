@@ -1,4 +1,5 @@
 import type { Reservation } from "@/db/schema";
+import type { TableOption } from "@/lib/plan";
 import { ActionForm } from "@/components/ActionForm";
 import { saveReservation } from "./actions";
 
@@ -9,7 +10,7 @@ export function ReservationForm({
 }: {
   date: string;
   initial?: Reservation;
-  tables: { id: string; label: string; seats: number }[];
+  tables: TableOption[];
 }) {
   return (
     <ActionForm action={saveReservation} submitLabel={initial ? "Salva le modifiche" : "Aggiungi la prenotazione"}>
@@ -47,10 +48,16 @@ export function ReservationForm({
           Tavolo <span className="hint">Facoltativo, puoi assegnarlo anche dalla sala</span>
           <select className="input" name="tableId" defaultValue={initial?.tableId ?? ""}>
             <option value="">Nessun tavolo</option>
-            {tables.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label} ({t.seats} posti)
-              </option>
+            {[...new Set(tables.map((t) => t.group))].map((group) => (
+              <optgroup key={group} label={group}>
+                {tables
+                  .filter((t) => t.group === group)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label} ({t.seats} posti)
+                    </option>
+                  ))}
+              </optgroup>
             ))}
           </select>
         </label>

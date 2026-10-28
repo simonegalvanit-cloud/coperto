@@ -18,18 +18,23 @@ Reservations and floor management for Italian restaurants. Flat monthly fee, no 
 
 Emails go out on every new booking (to guest and restaurant) and on every cancellation.
 
-### Stage 2, "Sala": the live floor plan
+### Stage 2, "Sala": the restaurant's real layout, live
 
 | Page | What it does |
 |---|---|
-| `/app/sala/modifica` | Draw the room: add tables from presets (or start from an example room), drag them into place, set name, seats and shape |
-| `/app/sala` | The room live: seated, arriving within 30 minutes, late, free, and each table's next booking. Drag the time slider to see any moment of the day. |
+| `/app/sala/modifica` | Draw the restaurant: **floors** (with their size in metres), **rooms and areas** on each floor (each open or closed to online booking), **fixed elements** (walls, doors, windows, entrance, kitchen, bar, till, service station, stairs, toilets, columns, plants) and **tables** at real size with a minimum and maximum number of people and an online on/off switch. Drag to move, corner handle to resize, undo/redo, zoom, or start from a two-floor example. |
+| `/app/sala` | The room live, floor by floor: seated, arriving within 30 minutes, late, free, and each table's next booking. Drag the time slider to see any moment of the day. |
 
 From the floor view staff can seat a booking, mark a table as left, seat walk-ins on a free table, move a booking to another
 table, and assign bookings without a table by hand or automatically (smallest free table that fits). A table can never be
 double-booked. The booking list and the floor view refresh themselves every 15 seconds.
 
-The rules for table states and automatic assignment are in `src/lib/floor.ts`.
+**Online bookings use the plan.** Once a restaurant has drawn its tables, a time is offered online only if a table open to
+online booking (in an open area, and in the area the guest chose, if any) suits the party size and is free for the whole
+stay, after seating everyone already booked. The table is assigned at booking time. Restaurants that haven't drawn their
+room are booked by the total seat count from the settings.
+
+The rules for table states, assignment and online table availability are in `src/lib/floor.ts`.
 
 **How availability works** (`src/lib/availability.ts`): a time is bookable online if, for the whole length of the stay,
 the people already seated plus the new party fit in the room's seats, the optional "max arrivals per slot" isn't exceeded,
