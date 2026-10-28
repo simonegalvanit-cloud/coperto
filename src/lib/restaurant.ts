@@ -6,6 +6,7 @@ import { availableSlots, type Booking } from "./availability";
 import { spotForOnline } from "./floor";
 import { nowIn, weekdayOf } from "./time";
 import { randomToken } from "./auth";
+import { guestFor } from "./guests";
 
 type Tx = Parameters<Parameters<DB["transaction"]>[0]>[0];
 
@@ -170,6 +171,7 @@ export async function createOnlineReservation(
     if (!slotsFor(r, details.date, details.partySize, ctx, area).includes(details.time)) return { ok: false as const };
     // Restaurants that drew their room get the table (or joined tables) now, so the booking is on the plan straight away.
     const spot = ctx.tables.length > 0 ? spotFor(r, ctx, details.time, details.partySize, area) : null;
+    const guestId = await guestFor(tx, r.id, details);
     const [reservation] = await tx
       .insert(schema.reservations)
       .values({
@@ -179,6 +181,7 @@ export async function createOnlineReservation(
         source: "online",
         tableId: spot?.tableId ?? null,
         combinationId: spot?.combinationId ?? null,
+        guestId,
         manageToken: randomToken(),
       })
       .returning();

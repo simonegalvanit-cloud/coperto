@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getClosures, getOnlineZones, getRestaurantBySlug, getServiceHours } from "@/lib/restaurant";
-import { addDays, nowIn, weekdayOf } from "@/lib/time";
+import { addDays, isDate, nowIn, weekdayOf } from "@/lib/time";
 import { BookingFlow } from "./BookingFlow";
 import { PublicShell } from "./PublicShell";
 
@@ -15,6 +15,8 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   const r = await getRestaurantBySlug(slug);
   if (!r) notFound();
   const embed = sp.embed === "1";
+  const initialDate = typeof sp.data === "string" && isDate(sp.data) ? sp.data : undefined;
+  const initialParty = typeof sp.persone === "string" && /^\d{1,3}$/.test(sp.persone) ? Number(sp.persone) : undefined;
 
   if (!r.bookingOpen) {
     return (
@@ -38,7 +40,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
 
   return (
     <PublicShell r={r} embed={embed}>
-      <BookingFlow slug={r.slug} embed={embed} days={days} zones={zones.length > 1 ? zones : []} maxPartySize={r.maxPartySize} phone={r.phone} restaurantName={r.name} />
+      <BookingFlow slug={r.slug} embed={embed} days={days} zones={zones.length > 1 ? zones : []} maxPartySize={r.maxPartySize} phone={r.phone} restaurantName={r.name} initialDate={initialDate} initialParty={initialParty} />
     </PublicShell>
   );
 }

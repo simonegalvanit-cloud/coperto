@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { getReservationByToken } from "@/lib/restaurant";
 import { capitalize, daysBetween, formatDate, nowIn, toMinutes } from "@/lib/time";
-import { cancelBooking } from "../../actions";
+import { cancelBooking, confirmPresence } from "../../actions";
 import { PublicShell } from "../../PublicShell";
 
 export const metadata: Metadata = { title: "La tua prenotazione", robots: { index: false } };
@@ -57,12 +57,25 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
         )}
       </div>
       {b.status === "confirmed" && upcoming && (
+        <form action={confirmPresence} className="stack">
+          <input type="hidden" name="token" value={token} />
+          {embed && <input type="hidden" name="embed" value="1" />}
+          {b.guestConfirmedAt ? (
+            <p className="form-ok">Hai confermato che ci sarai. Grazie, ti aspettiamo.</p>
+          ) : (
+            <div>
+              <button type="submit" className="btn btn-fill">Ci sarò</button>
+            </div>
+          )}
+        </form>
+      )}
+      {b.status === "confirmed" && upcoming && (
         <form action={cancelBooking} className="stack">
           <input type="hidden" name="token" value={token} />
           {embed && <input type="hidden" name="embed" value="1" />}
           <p className="small muted">Non puoi più venire? Cancella qui, così il tavolo torna libero per qualcun altro.</p>
           <div>
-            <ConfirmButton className="btn btn-danger" question="Vuoi davvero cancellare la prenotazione?">Cancella la prenotazione</ConfirmButton>
+            <ConfirmButton className="btn btn-danger" question="Vuoi davvero cancellare la prenotazione? Il tavolo tornerà libero per altri." confirmLabel="Sì, cancella">Cancella la prenotazione</ConfirmButton>
           </div>
         </form>
       )}

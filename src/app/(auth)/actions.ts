@@ -2,11 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
-import { endSession, hashPassword, startSession, verifyPassword } from "@/lib/auth";
-import { uniqueSlug } from "@/lib/restaurant";
+import { randomUUID } from "node:crypto";
+import { endSession, hashPassword, newSession, setSessionCookie, startSession, verifyPassword } from "@/lib/auth";
+import { slugify, uniqueSlug } from "@/lib/restaurant";
 import type { ActionResult } from "@/components/ActionForm";
 
 const signupSchema = z.object({
@@ -23,28 +24,73 @@ const DEFAULT_HOURS = [1, 2, 3, 4, 5, 6].flatMap((weekday) => [
   { weekday, name: "Cena", startTime: "19:30", endTime: "22:00" },
 ]);
 
+/** Which unique rule an insert broke, if that's what failed ("users_email_unique", …). */
+function uniqueViolation(err: unknown): string | null {
+  for (let e = err as { code?: string; constraint_name?: string; constraint?: string; cause?: unknown } | undefined; e; e = e.cause as typeof e) {
+    if (e.code === "23505") return e.constraint_name ?? e.constraint ?? "unique";
+  }
+  return null;
+}
+
+/**
+ * Creates the account, the restaurant with a typical week, and the session in one statement, so signup costs
+ * one trip to the database instead of a dozen. "Email already used" and
+ * "web address taken" come from the database's unique rules rather than separate questions beforehand.
+ */
 export async function signup(_: ActionResult, data: FormData): Promise<ActionResult> {
   const parsed = signupSchema.safeParse(Object.fromEntries(data));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const input = parsed.data;
 
   const db = await getDb();
-  const [existing] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, input.email));
-  if (existing) return { error: "Esiste già un account con questa email. Accedi invece di registrarti." };
-
   const passwordHash = await hashPassword(input.password);
-  const slug = await uniqueSlug(input.restaurant);
-  const userId = await db.transaction(async (tx) => {
-    const [user] = await tx.insert(schema.users).values({ email: input.email, name: input.name, passwordHash }).returning();
-    const [restaurant] = await tx
-      .insert(schema.restaurants)
-      .values({ ownerId: user.id, slug, name: input.restaurant, city: input.city, notifyEmail: input.email })
-      .returning();
-    await tx.insert(schema.serviceHours).values(DEFAULT_HOURS.map((h) => ({ ...h, restaurantId: restaurant.id })));
-    return user.id;
-  });
+  const userId = randomUUID();
+  const restaurantId = randomUUID();
+  const session = newSession(userId);
+  let slug = slugify(input.restaurant);
 
-  await startSession(userId);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      // One statement: the account, the restaurant, its week and the session are created together or not at all,
+      // in a single exchange with the database. Foreign keys are checked when the statement ends, so the
+      // restaurant can point at the user created in the same statement.
+      const hours = sql.join(
+        DEFAULT_HOURS.map((h) => sql`(${restaurantId}::uuid, ${h.weekday}, ${h.name}, ${h.startTime}, ${h.endTime})`),
+        sql`, `,
+      );
+      await db.execute(sql`
+        with
+          u as (
+            insert into ${schema.users} (id, email, name, password_hash)
+            values (${userId}::uuid, ${input.email}, ${input.name}, ${passwordHash})
+          ),
+          r as (
+            insert into ${schema.restaurants} (id, owner_id, slug, name, city, notify_email)
+            values (${restaurantId}::uuid, ${userId}::uuid, ${slug}, ${input.restaurant}, ${input.city}, ${input.email})
+          ),
+          h as (
+            insert into ${schema.serviceHours} (restaurant_id, weekday, name, start_time, end_time) values ${hours}
+          ),
+          s as (
+            insert into ${schema.sessions} (id, user_id, expires_at)
+            values (${session.row.id}, ${userId}::uuid, ${session.row.expiresAt.toISOString()}::timestamptz)
+          )
+        select 1
+      `);
+      break;
+    } catch (err) {
+      const rule = uniqueViolation(err);
+      if (rule?.includes("email")) return { error: "Esiste già un account con questa email. Accedi invece di registrarti." };
+      // Another restaurant has this web address: find a free one ("trattoria-da-mario-2") and try again.
+      if (rule?.includes("slug") && attempt < 3) {
+        slug = await uniqueSlug(input.restaurant);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  await setSessionCookie(session.token, session.row.expiresAt);
   revalidatePath("/", "layout");
   redirect("/app/impostazioni?benvenuto=1");
 }

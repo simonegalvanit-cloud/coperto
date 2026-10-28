@@ -151,12 +151,33 @@ export function ZoneTab({ z, children }: { z: ZoneLike; children?: ReactNode }) 
   );
 }
 
-/** One table, at its real size and angle, with up to three short lines of text inside (kept upright). */
-export function TableShape({ t, lines }: { t: Box & { shape: Shape; rotation?: number }; lines: ReactNode[] }) {
+/** Average glyph width as a share of the font size, for this typeface. */
+const GLYPH = 0.58;
+
+/**
+ * Fits a line of text into a width: the largest font size up to `max` at which it fits, never below `min`;
+ * only if it doesn't fit even at `min` is it shortened with "…".
+ */
+export function fitLine(text: string, width: number, max: number, min: number) {
+  const size = Math.min(max, width / Math.max(1, text.length * GLYPH));
+  if (size >= min) return { text, size };
+  return { text: fit(text, width, min * GLYPH), size: min };
+}
+
+/**
+ * One table, at its real size and angle, with up to three short lines of text inside (kept upright). The name
+ * shrinks to fit before it's ever cut, so "Finestra" shows whole on a small table.
+ */
+export function TableShape({ t, lines }: { t: Box & { shape: Shape; rotation?: number }; lines: string[] }) {
   const cx = t.x + t.w / 2;
   const cy = t.y + t.h / 2;
-  const lineH = 20;
-  const top = cy - ((lines.length - 1) * lineH) / 2;
+  // Text stays horizontal; on a turned table only the narrower side is safe to write across.
+  const across = (t.rotation ? Math.min(t.w, t.h) : t.w) * (t.shape === "round" ? 0.78 : 0.9);
+  const fitted = lines.map((line, i) => (i === 0 ? fitLine(line, across, 22, 12) : fitLine(line, across, 16, 11)));
+  const heights = fitted.map((f) => f.size * 1.15);
+  const top = cy - heights.reduce((a, b) => a + b, 0) / 2;
+  // Centre of each line: the top, plus the lines above it, plus half its own height.
+  const centres = heights.map((h, i) => top + heights.slice(0, i).reduce((a, b) => a + b, 0) + h / 2);
   return (
     <>
       {t.shape === "round" ? (
@@ -164,9 +185,17 @@ export function TableShape({ t, lines }: { t: Box & { shape: Shape; rotation?: n
       ) : (
         <rect className="tb-body" x={t.x} y={t.y} width={t.w} height={t.h} rx={3} transform={rotateAbout(t)} />
       )}
-      {lines.map((line, i) => (
-        <text key={i} className={i === 0 ? "tb-label" : "tb-line"} x={cx} y={top + i * lineH} dominantBaseline="central" textAnchor="middle">
-          {line}
+      {fitted.map((line, i) => (
+        <text
+          key={i}
+          className={i === 0 ? "tb-label" : "tb-line"}
+          style={{ fontSize: line.size }}
+          x={cx}
+          y={centres[i]}
+          dominantBaseline="central"
+          textAnchor="middle"
+        >
+          {line.text}
         </text>
       ))}
     </>
