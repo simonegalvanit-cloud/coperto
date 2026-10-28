@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
-import { conflictOn, PLAN_H, PLAN_W, tableStates, type FloorBooking, type PlanTable, type TableState } from "@/lib/floor";
+import { autoAssign as planAssignments, conflictOn, PLAN_H, PLAN_W, tableStates, type FloorBooking, type PlanTable, type TableState } from "@/lib/floor";
 import { fromMinutes, toMinutes } from "@/lib/time";
 import { fit, PlanGrid, PlanTableShape } from "@/components/PlanTableShape";
 import { assignTable, autoAssign, seatWalkIn, setFloorStatus, type FloorResult } from "./actions";
@@ -14,6 +14,16 @@ const STATE_LABEL: Record<TableState["state"], string> = {
   late: "In ritardo",
 };
 
+/** A change shown on the plan before the server confirms it; undone automatically if the server refuses. */
+type Change = { id: string; status?: FloorBooking["status"]; tableId?: string | null } | { add: FloorBooking };
+
+function applyChanges(list: FloorBooking[], changes: Change[]): FloorBooking[] {
+  return changes.reduce(
+    (acc, c) => ("add" in c ? [...acc, c.add] : acc.map((b) => (b.id === c.id ? { ...b, ...c } : b))),
+    list,
+  );
+}
+
 const people = (n: number) => (n === 1 ? "1 persona" : `${n} persone`);
 const isActive = (b: FloorBooking) => b.status === "confirmed" || b.status === "seated";
 
@@ -23,6 +33,7 @@ export function FloorLive({
   nowMinutes,
   range,
   startAt,
+  durationMinutes,
   tables,
   bookings,
 }: {
@@ -32,6 +43,8 @@ export function FloorLive({
   range: { from: number; to: number };
   /** Where the clock starts when looking at another day. */
   startAt: number;
+  /** Default length of a stay, for walk-ins shown before the server confirms them. */
+  durationMinutes: number;
   tables: PlanTable[];
   bookings: FloorBooking[];
 }) {
@@ -43,16 +56,18 @@ export function FloorLive({
   const [walkInName, setWalkInName] = useState("");
   const [message, setMessage] = useState<FloorResult>(null);
   const [pending, startTransition] = useTransition();
+  const [view, show] = useOptimistic(bookings, applyChanges);
 
   // In live mode the clock follows the server's "now", which refreshes every few seconds.
   const t = live ? nowMinutes : picked;
-  const states = tableStates(tables, bookings, t, live);
-  const unassigned = bookings.filter((b) => !b.tableId && isActive(b)).sort((a, b) => a.time.localeCompare(b.time));
-  const placingBooking = bookings.find((b) => b.id === placing) ?? null;
-  const fits = (table: PlanTable) => !!placingBooking && table.seats >= placingBooking.partySize && !conflictOn(table.id, placingBooking, bookings);
+  const states = tableStates(tables, view, t, live);
+  const unassigned = view.filter((b) => !b.tableId && isActive(b)).sort((a, b) => a.time.localeCompare(b.time));
+  const placingBooking = view.find((b) => b.id === placing) ?? null;
+  const fits = (table: PlanTable) => !!placingBooking && table.seats >= placingBooking.partySize && !conflictOn(table.id, placingBooking, view);
 
-  const run = (action: () => Promise<FloorResult>, after?: () => void) =>
+  const run = (action: () => Promise<FloorResult>, changes: Change[] = [], after?: () => void) =>
     startTransition(async () => {
+      if (changes.length) show(changes);
       const result = await action();
       setMessage(result);
       if (!result?.error) after?.();
@@ -60,7 +75,7 @@ export function FloorLive({
 
   const onTable = (table: PlanTable) => {
     if (placingBooking) {
-      run(() => assignTable(placingBooking.id, table.id), () => {
+      run(() => assignTable(placingBooking.id, table.id), [{ id: placingBooking.id, tableId: table.id }], () => {
         setPlacing(null);
         setSelected(table.id);
       });
@@ -76,7 +91,7 @@ export function FloorLive({
   }, 0);
   const sel = tables.find((tb) => tb.id === selected) ?? null;
   const selState = sel ? states.get(sel.id)! : null;
-  const selBookings = sel ? bookings.filter((b) => b.tableId === sel.id && isActive(b)).sort((a, b) => a.time.localeCompare(b.time)) : [];
+  const selBookings = sel ? view.filter((b) => b.tableId === sel.id && isActive(b)).sort((a, b) => a.time.localeCompare(b.time)) : [];
 
   return (
     <div className="floor">
@@ -170,12 +185,12 @@ export function FloorLive({
             {selState.booking && (
               <BookingCard b={selState.booking}>
                 {selState.booking.status === "seated" ? (
-                  <button type="button" className="btn btn-small btn-fill" disabled={pending} onClick={() => run(() => setFloorStatus(selState.booking!.id, "completed"))}>
+                  <button type="button" className="btn btn-small btn-fill" disabled={pending} onClick={() => run(() => setFloorStatus(selState.booking!.id, "completed"), [{ id: selState.booking!.id, status: "completed" }])}>
                     Si sono alzati
                   </button>
                 ) : (
                   isToday && (
-                    <button type="button" className="btn btn-small btn-fill" disabled={pending} onClick={() => run(() => setFloorStatus(selState.booking!.id, "seated"))}>
+                    <button type="button" className="btn btn-small btn-fill" disabled={pending} onClick={() => run(() => setFloorStatus(selState.booking!.id, "seated"), [{ id: selState.booking!.id, status: "seated" }])}>
                       Fai sedere
                     </button>
                   )
@@ -190,7 +205,17 @@ export function FloorLive({
                 style={{ gap: 10 }}
                 onSubmit={(e) => {
                   e.preventDefault();
-                  run(() => seatWalkIn(sel.id, walkInParty, walkInName), () => setWalkInName(""));
+                  const walkIn: FloorBooking = {
+                    id: `walk-in-${Date.now()}`,
+                    tableId: sel.id,
+                    time: fromMinutes(nowMinutes - (nowMinutes % 5)),
+                    durationMinutes,
+                    partySize: walkInParty,
+                    guestName: walkInName.trim() || "Senza prenotazione",
+                    notes: "",
+                    status: "seated",
+                  };
+                  run(() => seatWalkIn(sel.id, walkInParty, walkInName), [{ add: walkIn }], () => setWalkInName(""));
                 }}
               >
                 <h3>Senza prenotazione</h3>
@@ -221,7 +246,7 @@ export function FloorLive({
                         {b.status === "seated" && <span className="tag" style={{ marginLeft: 6 }}>Seduti</span>}
                       </span>
                       {b.status === "confirmed" && (
-                        <button type="button" className="btn btn-small btn-quiet" disabled={pending} onClick={() => run(() => assignTable(b.id, null))}>
+                        <button type="button" className="btn btn-small btn-quiet" disabled={pending} onClick={() => run(() => assignTable(b.id, null), [{ id: b.id, tableId: null }])}>
                           Togli
                         </button>
                       )}
@@ -262,7 +287,12 @@ export function FloorLive({
                 ))}
               </ul>
               <div>
-                <button type="button" className="btn btn-small" disabled={pending} onClick={() => run(() => autoAssign(date))}>
+                <button type="button" className="btn btn-small" disabled={pending} onClick={() =>
+                    run(
+                      () => autoAssign(date),
+                      [...planAssignments(tables, view)].map(([id, tableId]) => ({ id, tableId })),
+                    )
+                  }>
                   Assegna tutto in automatico
                 </button>
               </div>

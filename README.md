@@ -70,6 +70,10 @@ Without any of the email variables, emails are written to Vercel's logs instead 
 
 Every deploy applies database changes automatically before building.
 
+The app's server code runs in Vercel's Frankfurt region (`regions` in `vercel.json`), next to a Supabase project in
+Frankfurt (`eu-central-1`). If your database is in another region, change `fra1` to the nearest
+[Vercel region](https://vercel.com/docs/regions): every page makes a few database round trips, so distance adds up fast.
+
 ## For developers
 
 - Next.js 16 (App Router, server actions), TypeScript, Drizzle ORM on Postgres (PGlite locally)

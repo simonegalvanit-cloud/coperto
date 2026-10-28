@@ -236,3 +236,12 @@ textarea.input { padding: 10px 12px; min-height: 84px; resize: vertical; }
 .party-inline { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 22px; padding: 0 6px; border: 1.5px solid var(--ink); font-size: 13px; font-weight: 700; }
 .floor-side .list-plain li { align-items: flex-start; }
 .table-tag { font-weight: 700; }
+
+/* Loading outline between pages */
+.skeleton { display: flex; flex-direction: column; gap: 16px; }
+.sk { background: var(--tint); border-radius: 2px; animation: sk-pulse 1.2s ease-in-out infinite; }
+.sk-title { height: 44px; width: min(420px, 70%); }
+.sk-bar { height: 72px; }
+.sk-block { height: 120px; }
+@keyframes sk-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
