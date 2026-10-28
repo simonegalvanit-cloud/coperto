@@ -1,14 +1,15 @@
 import "server-only";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";
+import { databaseUrl } from "./url";
 
 export type DB = PostgresJsDatabase<typeof schema>;
 
-// With DATABASE_URL set (production) we talk to a real Postgres server.
+// With a database URL set (production) we talk to a real Postgres server.
 // Without it (local development) we run an embedded Postgres stored in .data/,
 // so the app works with zero setup. Both expose the same Drizzle API.
 async function connect(): Promise<DB> {
-  const url = process.env.DATABASE_URL;
+  const url = databaseUrl();
   if (url) {
     const { drizzle } = await import("drizzle-orm/postgres-js");
     const postgres = (await import("postgres")).default;

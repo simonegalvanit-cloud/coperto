@@ -90,6 +90,7 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
         nowMinutes={now.minutes}
         range={{ from, to }}
         startAt={Math.min(to, Math.max(from, startAt))}
+        durationMinutes={restaurant.durationMinutes}
         tables={tables}
         bookings={bookings}
       />
