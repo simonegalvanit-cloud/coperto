@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { AutoRefresh } from "@/components/AutoRefresh";
+import { LiveSync } from "@/components/LiveSync";
+import { changeStamp } from "@/lib/changes";
 import { requireAccount } from "@/lib/auth";
-import { loadPlan } from "@/lib/plan";
+import { closedAreas, loadPlan } from "@/lib/plan";
 import type { FloorBooking } from "@/lib/floor";
 import { addDays, capitalize, formatDate, isDate, nowIn, toMinutes, weekdayOf } from "@/lib/time";
 import { FloorLive } from "./FloorLive";
@@ -19,7 +20,7 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
   const isToday = date === now.date;
 
   const db = await getDb();
-  const [plan, rows, services] = await Promise.all([
+  const [plan, rows, services, closed, stamp] = await Promise.all([
     loadPlan(restaurant.id),
     db
       .select()
@@ -30,6 +31,8 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
       .from(schema.serviceHours)
       .where(and(eq(schema.serviceHours.restaurantId, restaurant.id), eq(schema.serviceHours.weekday, weekdayOf(date))))
       .orderBy(asc(schema.serviceHours.startTime)),
+    closedAreas(restaurant.id, date),
+    changeStamp(restaurant.id),
   ]);
 
   if (plan.tables.length === 0) {
@@ -62,6 +65,7 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
   const bookings: FloorBooking[] = rows.map((r) => ({
     id: r.id,
     tableId: r.tableId,
+    combinationId: r.combinationId,
     time: r.time,
     durationMinutes: r.durationMinutes,
     partySize: r.partySize,
@@ -73,13 +77,13 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
   const label = isToday ? "Oggi" : date === addDays(now.date, 1) ? "Domani" : null;
   return (
     <>
-      <AutoRefresh />
+      <LiveSync stamp={stamp} />
       <div className="daybar">
         <h1>Sala · {label ? `${label}, ${formatDate(date)}` : capitalize(formatDate(date))}</h1>
         <form className="daynav" action="/app/sala">
-          <Link className="btn btn-small" href={`/app/sala?data=${addDays(date, -1)}`} aria-label="Giorno precedente">‹</Link>
+          <Link className="btn btn-small" href={`/app/sala?data=${addDays(date, -1)}`} prefetch aria-label="Giorno precedente">‹</Link>
           {!isToday && <Link className="btn btn-small" href="/app/sala">Oggi</Link>}
-          <Link className="btn btn-small" href={`/app/sala?data=${addDays(date, 1)}`} aria-label="Giorno successivo">›</Link>
+          <Link className="btn btn-small" href={`/app/sala?data=${addDays(date, 1)}`} prefetch aria-label="Giorno successivo">›</Link>
           <input className="input btn-small" type="date" name="data" defaultValue={date} aria-label="Vai alla data" />
           <button className="btn btn-small" type="submit">Vai</button>
         </form>
@@ -96,6 +100,8 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
         zones={plan.zones}
         fixtures={plan.fixtures}
         tables={plan.tables}
+        combos={plan.combos}
+        closedAreas={closed}
         bookings={bookings}
       />
     </>

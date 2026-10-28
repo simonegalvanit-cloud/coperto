@@ -15,7 +15,8 @@ export function NavLinks() {
   return (
     <nav aria-label="Principale">
       {LINKS.map((l) => (
-        <Link key={l.href} href={l.href} aria-current={(l.href === "/app" ? path === l.href : path.startsWith(l.href)) ? "page" : undefined}>
+        // prefetch: load the whole page, data included, as soon as the menu is on screen, so the tap is instant.
+        <Link key={l.href} href={l.href} prefetch aria-current={(l.href === "/app" ? path === l.href : path.startsWith(l.href)) ? "page" : undefined}>
           {l.label}
         </Link>
       ))}

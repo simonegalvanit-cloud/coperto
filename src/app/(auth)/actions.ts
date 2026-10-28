@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
@@ -44,6 +45,7 @@ export async function signup(_: ActionResult, data: FormData): Promise<ActionRes
   });
 
   await startSession(userId);
+  revalidatePath("/", "layout");
   redirect("/app/impostazioni?benvenuto=1");
 }
 
@@ -58,10 +60,13 @@ export async function login(_: ActionResult, data: FormData): Promise<ActionResu
   const valid = await verifyPassword(password, user?.passwordHash ?? (await DUMMY_HASH));
   if (!user || !valid) return { error: "Email o password non corretti." };
   await startSession(user.id);
+  // A new account on this device: drop any pages the browser kept from the previous one.
+  revalidatePath("/", "layout");
   redirect("/app");
 }
 
 export async function logout() {
   await endSession();
+  revalidatePath("/", "layout");
   redirect("/accedi");
 }

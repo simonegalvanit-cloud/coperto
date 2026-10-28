@@ -5,6 +5,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -160,6 +161,8 @@ export const fixtures = pgTable(
     y: integer("y").notNull(),
     w: integer("w").notNull(),
     h: integer("h").notNull(),
+    // Degrees clockwise around the centre.
+    rotation: integer("rotation").notNull().default(0),
   },
   (t) => [index("fixtures_restaurant_idx").on(t.restaurantId)],
 );
@@ -187,8 +190,55 @@ export const diningTables = pgTable(
     y: integer("y").notNull(),
     w: integer("w").notNull(),
     h: integer("h").notNull(),
+    // Degrees clockwise around the centre.
+    rotation: integer("rotation").notNull().default(0),
   },
   (t) => [index("dining_tables_restaurant_idx").on(t.restaurantId)],
+);
+
+/** Tables that can be pushed together for a bigger party, e.g. T6 + T7 for up to 14. */
+export const tableCombinations = pgTable(
+  "table_combinations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    minCovers: integer("min_covers").notNull(),
+    maxCovers: integer("max_covers").notNull(),
+    bookableOnline: boolean("bookable_online").notNull().default(true),
+  },
+  (t) => [index("table_combinations_restaurant_idx").on(t.restaurantId)],
+);
+
+export const combinationTables = pgTable(
+  "combination_tables",
+  {
+    combinationId: uuid("combination_id")
+      .notNull()
+      .references(() => tableCombinations.id, { onDelete: "cascade" }),
+    tableId: uuid("table_id")
+      .notNull()
+      .references(() => diningTables.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.combinationId, t.tableId] })],
+);
+
+/**
+ * An area closed for one day (the terrace when it rains). By name, not zone id: a room drawn as several
+ * areas with the same name closes as one, and zone ids change every time the plan is saved.
+ */
+export const zoneClosures = pgTable(
+  "zone_closures",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    zoneName: text("zone_name").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+  },
+  (t) => [uniqueIndex("zone_closures_unique_idx").on(t.restaurantId, t.zoneName, t.date)],
 );
 
 export const reservationStatus = pgEnum("reservation_status", [
@@ -220,12 +270,18 @@ export const reservations = pgTable(
     source: reservationSource("source").notNull(),
     // Removing a table from the plan keeps its bookings, just unassigned.
     tableId: uuid("table_id").references(() => diningTables.id, { onDelete: "set null" }),
+    // Set instead of tableId when the party sits at joined tables.
+    combinationId: uuid("combination_id").references(() => tableCombinations.id, { onDelete: "set null" }),
     // Secret in the guest's link to view or cancel the booking without an account.
     manageToken: text("manage_token").notNull().unique(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("reservations_restaurant_date_idx").on(t.restaurantId, t.date)],
+  (t) => [
+    index("reservations_restaurant_date_idx").on(t.restaurantId, t.date),
+    // For the "has anything changed?" check behind live updates.
+    index("reservations_restaurant_updated_idx").on(t.restaurantId, t.updatedAt),
+  ],
 );
 
 export type Restaurant = typeof restaurants.$inferSelect;
@@ -236,4 +292,5 @@ export type Floor = typeof floors.$inferSelect;
 export type Zone = typeof zones.$inferSelect;
 export type Fixture = typeof fixtures.$inferSelect;
 export type FixtureKind = (typeof fixtureKind.enumValues)[number];
+export type TableCombination = typeof tableCombinations.$inferSelect;
 export type ReservationStatus = (typeof reservationStatus.enumValues)[number];

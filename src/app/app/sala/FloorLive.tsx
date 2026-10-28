@@ -5,17 +5,21 @@ import Link from "next/link";
 import {
   autoAssign as planAssignments,
   conflictOn,
+  isPlaced,
   tableStates,
+  tablesOf,
   type FloorBooking,
+  type PlanCombo,
   type PlanFixture,
   type PlanFloor,
   type PlanTable,
   type PlanZone,
+  type Spot,
   type TableState,
 } from "@/lib/floor";
 import { fromMinutes, toMinutes } from "@/lib/time";
-import { FixtureShape, fit, PlanDefs, TableShape, ZoneBody, ZoneTab } from "@/components/PlanShapes";
-import { assignTable, autoAssign, seatWalkIn, setFloorStatus, type FloorResult } from "./actions";
+import { ComboOutline, FixtureShape, fit, PlanDefs, TableShape, ZoneBody, ZoneTab } from "@/components/PlanShapes";
+import { assignTable, autoAssign, seatWalkIn, setAreaClosed, setFloorStatus, type FloorResult } from "./actions";
 
 const STATE_LABEL: Record<TableState["state"], string> = {
   free: "Libero",
@@ -25,7 +29,11 @@ const STATE_LABEL: Record<TableState["state"], string> = {
 };
 
 /** A change shown on the plan before the server confirms it; undone automatically if the server refuses. */
-type Change = { id: string; status?: FloorBooking["status"]; tableId?: string | null } | { add: FloorBooking };
+type Change =
+  | { id: string; status?: FloorBooking["status"]; tableId?: string | null; combinationId?: string | null }
+  | { add: FloorBooking };
+
+const NOWHERE: Spot = { tableId: null, combinationId: null };
 
 function applyChanges(list: FloorBooking[], changes: Change[]): FloorBooking[] {
   return changes.reduce(
@@ -48,6 +56,8 @@ export function FloorLive({
   zones,
   fixtures,
   tables,
+  combos,
+  closedAreas,
   bookings,
 }: {
   date: string;
@@ -62,6 +72,9 @@ export function FloorLive({
   zones: PlanZone[];
   fixtures: PlanFixture[];
   tables: PlanTable[];
+  combos: (PlanCombo & { label: string })[];
+  /** Names of the areas closed to online booking on this date. */
+  closedAreas: string[];
   bookings: FloorBooking[];
 }) {
   const [live, setLive] = useState(isToday);
@@ -73,6 +86,9 @@ export function FloorLive({
   const [message, setMessage] = useState<FloorResult>(null);
   const [pending, startTransition] = useTransition();
   const [view, show] = useOptimistic(bookings, applyChanges);
+  const [closed, showClosed] = useOptimistic(closedAreas, (list: string[], c: { name: string; closed: boolean }) =>
+    c.closed ? [...list, c.name] : list.filter((n) => n !== c.name),
+  );
   const [zoom, setZoom] = useState(1);
   const [floorId, setFloorId] = useState(() => tables[0]?.floorId ?? floors[0]?.id);
   const floor = floors.find((f) => f.id === floorId) ?? floors[0];
@@ -80,10 +96,28 @@ export function FloorLive({
 
   // In live mode the clock follows the server's "now", which refreshes every few seconds.
   const t = live ? nowMinutes : picked;
-  const states = tableStates(tables, view, t, live);
-  const unassigned = view.filter((b) => !b.tableId && isActive(b)).sort((a, b) => a.time.localeCompare(b.time));
+  const states = tableStates(tables, view, t, live, combos);
+  const unassigned = view.filter((b) => !isPlaced(b) && isActive(b)).sort((a, b) => a.time.localeCompare(b.time));
   const placingBooking = view.find((b) => b.id === placing) ?? null;
-  const fits = (table: PlanTable) => !!placingBooking && table.seats >= placingBooking.partySize && !conflictOn(table.id, placingBooking, view);
+  const comboLabel = new Map(combos.map((c) => [c.id, c.label]));
+  const placeLabel = (b: FloorBooking) =>
+    b.combinationId ? `Tavoli ${comboLabel.get(b.combinationId) ?? ""}` : b.tableId ? `Tavolo ${tables.find((x) => x.id === b.tableId)?.label ?? ""}` : "";
+
+  /**
+   * Where tapping this table would put the booking being placed: the table itself if the party fits and it's
+   * free, otherwise the smallest free group of joined tables that includes it and fits the party.
+   */
+  const placeFor = (table: PlanTable): { spot: Spot; fits: boolean } | null => {
+    if (!placingBooking) return null;
+    const p = placingBooking.partySize;
+    if (table.seats >= p && !conflictOn([table.id], placingBooking, view, combos)) return { spot: { tableId: table.id, combinationId: null }, fits: true };
+    const group = combos
+      .filter((c) => c.tableIds.includes(table.id) && c.maxCovers >= p && !conflictOn(c.tableIds, placingBooking, view, combos))
+      .sort((a, b) => a.maxCovers - b.maxCovers)[0];
+    if (group) return { spot: { tableId: null, combinationId: group.id }, fits: true };
+    return { spot: { tableId: table.id, combinationId: null }, fits: false };
+  };
+  const fits = (table: PlanTable) => !!placeFor(table)?.fits;
 
   const run = (action: () => Promise<FloorResult>, changes: Change[] = [], after?: () => void) =>
     startTransition(async () => {
@@ -94,8 +128,9 @@ export function FloorLive({
     });
 
   const onTable = (table: PlanTable) => {
-    if (placingBooking) {
-      run(() => assignTable(placingBooking.id, table.id), [{ id: placingBooking.id, tableId: table.id }], () => {
+    const place = placeFor(table);
+    if (placingBooking && place) {
+      run(() => assignTable(placingBooking.id, place.spot), [{ id: placingBooking.id, ...place.spot }], () => {
         setPlacing(null);
         setSelected(table.id);
       });
@@ -111,7 +146,16 @@ export function FloorLive({
   }, 0);
   const sel = tables.find((tb) => tb.id === selected) ?? null;
   const selState = sel ? states.get(sel.id)! : null;
-  const selBookings = sel ? view.filter((b) => b.tableId === sel.id && isActive(b)).sort((a, b) => a.time.localeCompare(b.time)) : [];
+  const selBookings = sel
+    ? view.filter((b) => isActive(b) && tablesOf(b, combos).includes(sel.id)).sort((a, b) => a.time.localeCompare(b.time))
+    : [];
+  const areaNames = [...new Set(zones.map((z) => z.name))].sort((a, b) => a.localeCompare(b, "it"));
+  const zoneOf = new Map(tables.map((tb) => [tb.id, tb.zoneId ? zoneName.get(tb.zoneId) : undefined]));
+  const inArea = (name: string) => view.filter((b) => isActive(b) && tablesOf(b, combos).some((id) => zoneOf.get(id) === name)).length;
+  // Groups of joined tables in use right now on this floor get an outline.
+  const combosInUse = new Set(
+    [...states.values()].map((s) => s.booking?.combinationId).filter((id): id is string => !!id),
+  );
 
   return (
     <div className="floor">
@@ -143,7 +187,7 @@ export function FloorLive({
           <div className="placing" role="status">
             <span>
               Tocca un tavolo per <strong>{placingBooking.guestName}</strong> ({people(placingBooking.partySize)}, {placingBooking.time}).
-              I tavoli adatti sono evidenziati.
+              I tavoli adatti sono evidenziati; se il gruppo è grande, tocca uno dei tavoli da unire.
             </span>
             <button type="button" className="btn btn-small" onClick={() => setPlacing(null)}>Annulla</button>
           </div>
@@ -183,7 +227,7 @@ export function FloorLive({
             {zones
               .filter((z) => z.floorId === floor.id)
               .map((z) => (
-                <ZoneBody key={z.id} z={z} />
+                <ZoneBody key={z.id} z={{ ...z, closedToday: closed.includes(z.name) }} />
               ))}
             {fixtures
               .filter((x) => x.floorId === floor.id)
@@ -218,10 +262,16 @@ export function FloorLive({
                 </g>
               );
             })}
+            {combos
+              .filter((c) => combosInUse.has(c.id))
+              .map((c) => {
+                const members = tables.filter((tb) => c.tableIds.includes(tb.id) && tb.floorId === floor.id);
+                return <ComboOutline key={c.id} tables={members} label={c.label} />;
+              })}
             {zones
               .filter((z) => z.floorId === floor.id)
               .map((z) => (
-                <ZoneTab key={z.id} z={z} />
+                <ZoneTab key={z.id} z={{ ...z, closedToday: closed.includes(z.name) }} />
               ))}
           </svg>
         </div>
@@ -249,7 +299,7 @@ export function FloorLive({
             </div>
 
             {selState.booking && (
-              <BookingCard b={selState.booking}>
+              <BookingCard b={selState.booking} place={placeLabel(selState.booking)}>
                 {selState.booking.status === "seated" ? (
                   <button type="button" className="btn btn-small btn-fill" disabled={pending} onClick={() => run(() => setFloorStatus(selState.booking!.id, "completed"), [{ id: selState.booking!.id, status: "completed" }])}>
                     Si sono alzati
@@ -272,8 +322,9 @@ export function FloorLive({
                 onSubmit={(e) => {
                   e.preventDefault();
                   const walkIn: FloorBooking = {
-                    id: `walk-in-${Date.now()}`,
+                    id: `walk-in-${sel.id}`,
                     tableId: sel.id,
+                    combinationId: null,
                     time: fromMinutes(nowMinutes - (nowMinutes % 5)),
                     durationMinutes,
                     partySize: walkInParty,
@@ -309,10 +360,11 @@ export function FloorLive({
                     <li key={b.id}>
                       <span>
                         <strong>{b.time}</strong> {b.guestName} <span className="muted">({b.partySize})</span>
+                        {b.combinationId && <span className="small muted"> · tavoli {comboLabel.get(b.combinationId)}</span>}
                         {b.status === "seated" && <span className="tag" style={{ marginLeft: 6 }}>Seduti</span>}
                       </span>
                       {b.status === "confirmed" && (
-                        <button type="button" className="btn btn-small btn-quiet" disabled={pending} onClick={() => run(() => assignTable(b.id, null), [{ id: b.id, tableId: null }])}>
+                        <button type="button" className="btn btn-small btn-quiet" disabled={pending} onClick={() => run(() => assignTable(b.id, NOWHERE), [{ id: b.id, ...NOWHERE }])}>
                           Togli
                         </button>
                       )}
@@ -356,7 +408,7 @@ export function FloorLive({
                 <button type="button" className="btn btn-small" disabled={pending} onClick={() =>
                     run(
                       () => autoAssign(date),
-                      [...planAssignments(tables, view)].map(([id, tableId]) => ({ id, tableId })),
+                      [...planAssignments(tables, view, combos)].map(([id, spot]) => ({ id, ...spot })),
                     )
                   }>
                   Assegna tutto in automatico
@@ -366,6 +418,39 @@ export function FloorLive({
           )}
         </div>
 
+        {areaNames.length > 0 && (
+          <div className="panel stack">
+            <h2>Aree {isToday ? "oggi" : "in questo giorno"}</h2>
+            <p className="small muted">Chiudi un’area per un giorno (il dehors quando piove): online non si prenota lì, le prenotazioni già fatte restano.</p>
+            <ul className="list-plain area-list">
+              {areaNames.map((name) => {
+                const isClosed = closed.includes(name);
+                const count = inArea(name);
+                return (
+                  <li key={name}>
+                    <span>
+                      <strong>{name}</strong> <span className="small muted">{isClosed ? "Chiusa" : "Aperta"}{count ? ` · ${count} prenotazioni` : ""}</span>
+                    </span>
+                    <button
+                      type="button"
+                      className={`btn btn-small${isClosed ? " btn-fill" : ""}`}
+                      disabled={pending}
+                      onClick={() =>
+                        startTransition(async () => {
+                          showClosed({ name, closed: !isClosed });
+                          setMessage(await setAreaClosed(name, date, !isClosed));
+                        })
+                      }
+                    >
+                      {isClosed ? "Riapri" : `Chiudi ${isToday ? "per oggi" : "questo giorno"}`}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         <p className="small">
           <Link href="/app/sala/modifica">Modifica la pianta</Link> · <Link href={`/app?data=${date}`}>Elenco prenotazioni</Link>
         </p>
@@ -374,13 +459,16 @@ export function FloorLive({
   );
 }
 
-function BookingCard({ b, children }: { b: FloorBooking; children: React.ReactNode }) {
+function BookingCard({ b, place, children }: { b: FloorBooking; place: string; children: React.ReactNode }) {
   const end = fromMinutes(toMinutes(b.time) + b.durationMinutes);
   return (
     <div className="booking-card stack" style={{ gap: 8 }}>
       <div>
         <strong style={{ fontSize: 18 }}>{b.guestName}</strong> <span className="party-inline">{b.partySize}</span>
-        <div className="small muted">{b.time}–{end}</div>
+        <div className="small muted">
+          {b.time}–{end}
+          {place && ` · ${place}`}
+        </div>
       </div>
       {b.notes && <p className="note small">{b.notes}</p>}
       <div className="row" style={{ gap: 6 }}>{children}</div>

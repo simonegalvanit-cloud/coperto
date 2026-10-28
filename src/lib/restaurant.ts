@@ -3,7 +3,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema, type DB } from "@/db";
 import type { Reservation, Restaurant } from "@/db/schema";
 import { availableSlots, type Booking } from "./availability";
-import { tableForOnline } from "./floor";
+import { spotForOnline } from "./floor";
 import { nowIn, weekdayOf } from "./time";
 import { randomToken } from "./auth";
 
@@ -36,7 +36,7 @@ export async function getClosures(restaurantId: string) {
 }
 
 async function dayContext(db: DB | Tx, restaurantId: string, date: string) {
-  const [services, closed, bookings, tables, zones] = await Promise.all([
+  const [services, closed, bookings, tables, zones, combos, links, closedAreas] = await Promise.all([
     db
       .select({ startTime: schema.serviceHours.startTime, endTime: schema.serviceHours.endTime })
       .from(schema.serviceHours)
@@ -52,6 +52,7 @@ async function dayContext(db: DB | Tx, restaurantId: string, date: string) {
         partySize: schema.reservations.partySize,
         durationMinutes: schema.reservations.durationMinutes,
         tableId: schema.reservations.tableId,
+        combinationId: schema.reservations.combinationId,
         status: schema.reservations.status,
       })
       .from(schema.reservations)
@@ -64,11 +65,30 @@ async function dayContext(db: DB | Tx, restaurantId: string, date: string) {
       ),
     db.select().from(schema.diningTables).where(eq(schema.diningTables.restaurantId, restaurantId)),
     db
-      .select({ id: schema.zones.id, bookableOnline: schema.zones.bookableOnline })
+      .select({ id: schema.zones.id, name: schema.zones.name, bookableOnline: schema.zones.bookableOnline })
       .from(schema.zones)
       .where(eq(schema.zones.restaurantId, restaurantId)),
+    db.select().from(schema.tableCombinations).where(eq(schema.tableCombinations.restaurantId, restaurantId)),
+    db
+      .select({ combinationId: schema.combinationTables.combinationId, tableId: schema.combinationTables.tableId })
+      .from(schema.combinationTables)
+      .innerJoin(schema.tableCombinations, eq(schema.tableCombinations.id, schema.combinationTables.combinationId))
+      .where(eq(schema.tableCombinations.restaurantId, restaurantId)),
+    db
+      .select({ name: schema.zoneClosures.zoneName })
+      .from(schema.zoneClosures)
+      .where(and(eq(schema.zoneClosures.restaurantId, restaurantId), eq(schema.zoneClosures.date, date))),
   ]);
-  return { services, closed: closed.length > 0, bookings: bookings satisfies Booking[], tables, zones };
+  // An area closed for the day counts as not bookable online, for every part drawn with that name.
+  const shut = new Set(closedAreas.map((c) => c.name));
+  return {
+    services,
+    closed: closed.length > 0,
+    bookings: bookings satisfies Booking[],
+    tables,
+    zones: zones.map((z) => ({ ...z, bookableOnline: z.bookableOnline && !shut.has(z.name) })),
+    combos: combos.map((c) => ({ ...c, tableIds: links.filter((l) => l.combinationId === c.id).map((l) => l.tableId) })),
+  };
 }
 
 type DayContext = Awaited<ReturnType<typeof dayContext>>;
@@ -77,25 +97,36 @@ type DayContext = Awaited<ReturnType<typeof dayContext>>;
  * Bookable times for a party. Restaurants that drew their room are booked by table (a suitable table must be
  * free for the whole stay); the others by the total seat count from settings.
  */
-function slotsFor(r: Restaurant, date: string, partySize: number, ctx: DayContext, zoneId?: string | null) {
+function slotsFor(r: Restaurant, date: string, partySize: number, ctx: DayContext, area?: string | null) {
   if (!r.bookingOpen) return [];
   const byTable = ctx.tables.length > 0;
   const rules = byTable ? { ...r, capacity: Number.MAX_SAFE_INTEGER } : r;
   const slots = availableSlots({ date, partySize, rules, now: nowIn(r.timezone), ...ctx });
   if (!byTable) return slots;
-  return slots.filter((time) => tableFor(r, ctx, time, partySize, zoneId) !== null);
+  return slots.filter((time) => spotFor(r, ctx, time, partySize, area) !== null);
 }
 
-function tableFor(r: Restaurant, ctx: DayContext, time: string, partySize: number, zoneId?: string | null) {
-  return tableForOnline(ctx.tables, ctx.zones, ctx.bookings, { id: "new", time, durationMinutes: r.durationMinutes, partySize }, zoneId);
+/** Where the guest would sit; `area` is a zone name, covering every part of a room drawn as several zones. */
+function spotFor(r: Restaurant, ctx: DayContext, time: string, partySize: number, area?: string | null) {
+  const zoneIds = area ? ctx.zones.filter((z) => z.name === area).map((z) => z.id) : null;
+  return spotForOnline(
+    ctx.tables,
+    ctx.zones,
+    ctx.bookings,
+    { id: "new", time, durationMinutes: r.durationMinutes, partySize },
+    { zoneIds, combos: ctx.combos },
+  );
 }
 
-export async function getAvailableSlots(r: Restaurant, date: string, partySize: number, zoneId?: string | null) {
+export async function getAvailableSlots(r: Restaurant, date: string, partySize: number, area?: string | null) {
   const db = await getDb();
-  return slotsFor(r, date, partySize, await dayContext(db, r.id, date), zoneId);
+  return slotsFor(r, date, partySize, await dayContext(db, r.id, date), area);
 }
 
-/** Zones a guest can choose between online: open to online booking and with at least one online table. */
+/**
+ * Areas a guest can choose between online, by name: open to online booking and with at least one online
+ * table. Zones sharing a name (an L-shaped room drawn as two) are one choice.
+ */
 export async function getOnlineZones(restaurantId: string) {
   const db = await getDb();
   const [zones, tables] = await Promise.all([
@@ -110,7 +141,7 @@ export async function getOnlineZones(restaurantId: string) {
       .where(and(eq(schema.diningTables.restaurantId, restaurantId), eq(schema.diningTables.bookableOnline, true))),
   ]);
   const used = new Set(tables.map((t) => t.zoneId));
-  return zones.filter((z) => used.has(z.id));
+  return [...new Set(zones.filter((z) => used.has(z.id)).map((z) => z.name))];
 }
 
 export type GuestDetails = {
@@ -130,15 +161,15 @@ export type GuestDetails = {
 export async function createOnlineReservation(
   r: Restaurant,
   details: GuestDetails,
-  zoneId?: string | null,
+  area?: string | null,
 ): Promise<{ ok: true; reservation: Reservation } | { ok: false }> {
   const db = await getDb();
   return db.transaction(async (tx) => {
     await tx.select({ id: schema.restaurants.id }).from(schema.restaurants).where(eq(schema.restaurants.id, r.id)).for("update");
     const ctx = await dayContext(tx, r.id, details.date);
-    if (!slotsFor(r, details.date, details.partySize, ctx, zoneId).includes(details.time)) return { ok: false as const };
-    // Restaurants that drew their room get the table assigned now, so the booking is on the plan straight away.
-    const tableId = ctx.tables.length > 0 ? tableFor(r, ctx, details.time, details.partySize, zoneId) : null;
+    if (!slotsFor(r, details.date, details.partySize, ctx, area).includes(details.time)) return { ok: false as const };
+    // Restaurants that drew their room get the table (or joined tables) now, so the booking is on the plan straight away.
+    const spot = ctx.tables.length > 0 ? spotFor(r, ctx, details.time, details.partySize, area) : null;
     const [reservation] = await tx
       .insert(schema.reservations)
       .values({
@@ -146,7 +177,8 @@ export async function createOnlineReservation(
         restaurantId: r.id,
         durationMinutes: r.durationMinutes,
         source: "online",
-        tableId,
+        tableId: spot?.tableId ?? null,
+        combinationId: spot?.combinationId ?? null,
         manageToken: randomToken(),
       })
       .returning();

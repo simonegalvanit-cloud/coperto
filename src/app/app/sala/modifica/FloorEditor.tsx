@@ -3,24 +3,68 @@
 import { useCallback, useEffect, useRef, useState, useTransition, type KeyboardEvent, type PointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { FIXTURES, FLOOR_NAMES, sizeFor, zoneFor, type FixtureKind, type Shape } from "@/lib/floor";
-import { FixtureShape, fit, PlanDefs, TableShape, ZoneBody, ZoneTab, zoneTabWidth } from "@/components/PlanShapes";
+import { ComboOutline, FixtureShape, fit, PlanDefs, rotateAbout, TableShape, ZoneBody, ZoneTab, zoneTabWidth } from "@/components/PlanShapes";
 import { saveFloorPlan, type FloorPlanInput } from "../actions";
 
 // Everything is in centimetres. `key` identifies items in the editor; `id` is their database id once saved.
 type Box = { x: number; y: number; w: number; h: number };
-type ETable = Box & { key: string; id?: string; label: string; seats: number; minCovers: number; bookableOnline: boolean; shape: Shape };
+type ETable = Box & {
+  key: string;
+  id?: string;
+  label: string;
+  seats: number;
+  minCovers: number;
+  bookableOnline: boolean;
+  shape: Shape;
+  rotation: number;
+};
 type EZone = Box & { key: string; name: string; bookableOnline: boolean };
-type EFixture = Box & { key: string; kind: FixtureKind; label: string };
-type EFloor = { key: string; id?: string; name: string; level: number; width: number; height: number; zones: EZone[]; fixtures: EFixture[]; tables: ETable[] };
+type EFixture = Box & { key: string; kind: FixtureKind; label: string; rotation: number };
+/** Joined tables, by table key. `auto` keeps the min/max people following the members until edited by hand. */
+type ECombo = { key: string; id?: string; tableKeys: string[]; minCovers: number; maxCovers: number; bookableOnline: boolean; auto?: boolean };
+type EFloor = {
+  key: string;
+  id?: string;
+  name: string;
+  level: number;
+  width: number;
+  height: number;
+  zones: EZone[];
+  fixtures: EFixture[];
+  tables: ETable[];
+  combos: ECombo[];
+};
 type Kind = "table" | "zone" | "fixture";
 type Selection = { kind: Kind; key: string } | null;
-type Drag = { mode: "move" | "resize"; kind: Kind; key: string; dx: number; dy: number; before: EFloor[]; moved: boolean };
+type Drag = {
+  mode: "move" | "resize";
+  kind: Kind;
+  key: string;
+  dx: number;
+  dy: number;
+  /** Centre and angle at the start of a resize of a rotated item, which resizes around its centre. */
+  cx: number;
+  cy: number;
+  rot: number;
+  before: EFloor[];
+  moved: boolean;
+};
 
 export type EditorInput = {
   floors: { id: string; name: string; level: number; width: number; height: number }[];
   zones: (Box & { floorId: string; name: string; bookableOnline: boolean })[];
-  fixtures: (Box & { floorId: string; kind: FixtureKind; label: string })[];
-  tables: (Box & { id: string; floorId: string; label: string; seats: number; minCovers: number; bookableOnline: boolean; shape: Shape })[];
+  fixtures: (Box & { floorId: string; kind: FixtureKind; label: string; rotation: number })[];
+  tables: (Box & {
+    id: string;
+    floorId: string;
+    label: string;
+    seats: number;
+    minCovers: number;
+    bookableOnline: boolean;
+    shape: Shape;
+    rotation: number;
+  })[];
+  combos: { id: string; tableIds: string[]; minCovers: number; maxCovers: number; bookableOnline: boolean }[];
 };
 
 const SNAP = 5;
@@ -62,29 +106,36 @@ const FIXTURE_NAMES: Record<FixtureKind, string> = {
 const LEVELS = [-1, 0, 1, 2, 3];
 
 function fromInput(input: EditorInput): EFloor[] {
-  return input.floors.map((f) => ({
-    key: newKey(),
-    id: f.id,
-    name: f.name,
-    level: f.level,
-    width: f.width,
-    height: f.height,
-    zones: input.zones.filter((z) => z.floorId === f.id).map((z) => ({ ...z, key: newKey() })),
-    fixtures: input.fixtures.filter((x) => x.floorId === f.id).map((x) => ({ ...x, key: newKey() })),
-    tables: input.tables.filter((t) => t.floorId === f.id).map((t) => ({ ...t, key: newKey() })),
-  }));
+  return input.floors.map((f) => {
+    const tables = input.tables.filter((t) => t.floorId === f.id).map((t) => ({ ...t, key: newKey() }));
+    const keyOf = new Map(tables.map((t) => [t.id, t.key]));
+    return {
+      key: newKey(),
+      id: f.id,
+      name: f.name,
+      level: f.level,
+      width: f.width,
+      height: f.height,
+      zones: input.zones.filter((z) => z.floorId === f.id).map((z) => ({ ...z, key: newKey() })),
+      fixtures: input.fixtures.filter((x) => x.floorId === f.id).map((x) => ({ ...x, key: newKey() })),
+      tables,
+      combos: input.combos
+        .filter((c) => c.tableIds.length > 1 && c.tableIds.every((id) => keyOf.has(id)))
+        .map(({ tableIds, ...c }) => ({ ...c, key: newKey(), tableKeys: tableIds.map((id) => keyOf.get(id)!) })),
+    };
+  });
 }
 
 function toInput(plan: EFloor[]): FloorPlanInput {
   const box = ({ x, y, w, h }: Box) => ({ x, y, w, h });
-  return plan.map((f) => ({
+  const floors = plan.map((f) => ({
     id: f.id,
     name: f.name,
     level: f.level,
     width: f.width,
     height: f.height,
     zones: f.zones.map((z) => ({ name: z.name, bookableOnline: z.bookableOnline, ...box(z) })),
-    fixtures: f.fixtures.map((x) => ({ kind: x.kind, label: x.label, ...box(x) })),
+    fixtures: f.fixtures.map((x) => ({ kind: x.kind, label: x.label, rotation: x.rotation, ...box(x) })),
     tables: f.tables.map((t) => ({
       id: t.id,
       label: t.label,
@@ -92,9 +143,32 @@ function toInput(plan: EFloor[]): FloorPlanInput {
       minCovers: t.minCovers,
       bookableOnline: t.bookableOnline,
       shape: t.shape,
+      rotation: t.rotation,
       ...box(t),
     })),
   }));
+  // Joined tables are saved by table name, since new tables have no id yet.
+  const combos = plan.flatMap((f) => {
+    const labelOf = new Map(f.tables.map((t) => [t.key, t.label]));
+    return f.combos
+      .filter((c) => c.tableKeys.length > 1)
+      .map((c) => ({
+        id: c.id,
+        tables: c.tableKeys.map((k) => labelOf.get(k)!),
+        minCovers: c.minCovers,
+        maxCovers: c.maxCovers,
+        bookableOnline: c.bookableOnline,
+      }));
+  });
+  return { floors, combos };
+}
+
+/** Suggested people range for joined tables: more than the biggest member seats alone, up to all seats together. */
+function comboDefaults(tables: ETable[], keys: string[]) {
+  const members = tables.filter((t) => keys.includes(t.key));
+  const max = members.reduce((n, t) => n + t.seats, 0);
+  const biggest = Math.max(0, ...members.map((t) => t.seats));
+  return { maxCovers: Math.max(1, max), minCovers: Math.max(1, Math.min(max, biggest + 1)) };
 }
 
 const blankFloor = (level = 0, width = 1400, height = 900): EFloor => ({
@@ -106,6 +180,7 @@ const blankFloor = (level = 0, width = 1400, height = 900): EFloor => ({
   zones: [],
   fixtures: [],
   tables: [],
+  combos: [],
 });
 
 function nextLabel(plan: EFloor[]) {
@@ -134,6 +209,7 @@ function exampleRestaurant(): EFloor[] {
     seats,
     minCovers,
     bookableOnline: true,
+    rotation: 0,
     x,
     y,
     ...sizeFor(shape, seats),
@@ -146,6 +222,7 @@ function exampleRestaurant(): EFloor[] {
     y,
     w: w ?? FIXTURES[kind].w,
     h: h ?? FIXTURES[kind].h,
+    rotation: 0,
   });
   const ground: EFloor = {
     ...blankFloor(0, 1600, 1000),
@@ -188,6 +265,12 @@ function exampleRestaurant(): EFloor[] {
       t("D7", "square", 2, 1380, 800),
     ],
   };
+  const byLabel = (f: EFloor, label: string) => f.tables.find((x) => x.label === label)!.key;
+  ground.tables.find((x) => x.label === "T5")!.rotation = 45;
+  ground.combos = [
+    { key: k(), tableKeys: [byLabel(ground, "T8"), byLabel(ground, "T9")], minCovers: 3, maxCovers: 4, bookableOnline: true },
+    { key: k(), tableKeys: [byLabel(ground, "D3"), byLabel(ground, "D4")], minCovers: 5, maxCovers: 8, bookableOnline: true },
+  ];
   const first: EFloor = {
     ...blankFloor(1, 1100, 800),
     zones: [{ key: k(), name: "Sala privata", bookableOnline: false, x: 0, y: 0, w: 1100, h: 800 }],
@@ -219,6 +302,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
   const [past, setPast] = useState<EFloor[][]>([]);
   const [future, setFuture] = useState<EFloor[][]>([]);
   const [zoom, setZoom] = useState(1);
+  const [joining, setJoining] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<{ error?: string; ok?: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -326,7 +410,17 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
 
   const addTable = (shape: Shape, seats: number) => {
     const size = sizeFor(shape, seats);
-    addTo("table", { key: newKey(), label: nextLabel(plan), shape, seats, minCovers: 1, bookableOnline: true, ...size, ...freeSpot(floor, size.w, size.h) });
+    addTo("table", {
+      key: newKey(),
+      label: nextLabel(plan),
+      shape,
+      seats,
+      minCovers: 1,
+      bookableOnline: true,
+      rotation: 0,
+      ...size,
+      ...freeSpot(floor, size.w, size.h),
+    });
   };
 
   const addZone = () => {
@@ -340,7 +434,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
     const d = FIXTURES[kind];
     const w = Math.min(d.w, floor.width);
     const h = Math.min(d.h, floor.height);
-    addTo("fixture", { key: newKey(), kind, label: d.label, w, h, ...freeSpot(floor, w, h, 10) });
+    addTo("fixture", { key: newKey(), kind, label: d.label, w, h, rotation: 0, ...freeSpot(floor, w, h, 10) });
   };
 
   const remove = (kind: Kind, key: string) => {
@@ -353,6 +447,11 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
               tables: kind === "table" ? f.tables.filter((t) => t.key !== key) : f.tables,
               zones: kind === "zone" ? f.zones.filter((z) => z.key !== key) : f.zones,
               fixtures: kind === "fixture" ? f.fixtures.filter((x) => x.key !== key) : f.fixtures,
+              // A deleted table leaves its groups; a group of fewer than two tables is no group.
+              combos:
+                kind === "table"
+                  ? f.combos.map((c) => ({ ...c, tableKeys: c.tableKeys.filter((k) => k !== key) })).filter((c) => c.tableKeys.length > 1)
+                  : f.combos,
             },
       ),
     );
@@ -367,6 +466,36 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
     copy.x = clamp(copy.x, 0, floor.width - copy.w);
     copy.y = clamp(copy.y, 0, floor.height - copy.h);
     addTo(kind, copy);
+  };
+
+  // ---------- Joined tables ----------
+
+  const setCombos = (fn: (combos: ECombo[]) => ECombo[]) =>
+    commit(plan.map((f) => (f.key === floor.key ? { ...f, combos: fn(f.combos) } : f)));
+
+  const startJoin = (tableKey: string) => {
+    const combo: ECombo = { key: newKey(), tableKeys: [tableKey], bookableOnline: true, auto: true, ...comboDefaults(floor.tables, [tableKey]) };
+    setCombos((cs) => [...cs, combo]);
+    setJoining(combo.key);
+  };
+
+  const toggleInJoin = (tableKey: string) =>
+    setCombos((cs) =>
+      cs.map((c) => {
+        if (c.key !== joining) return c;
+        const tableKeys = c.tableKeys.includes(tableKey) ? c.tableKeys.filter((k) => k !== tableKey) : [...c.tableKeys, tableKey];
+        return { ...c, tableKeys, ...(c.auto ? comboDefaults(floor.tables, tableKeys) : {}) };
+      }),
+    );
+
+  const finishJoin = () => {
+    setCombos((cs) => cs.filter((c) => c.key !== joining || c.tableKeys.length > 1));
+    setJoining(null);
+  };
+
+  const removeCombo = (key: string) => {
+    setCombos((cs) => cs.filter((c) => c.key !== key));
+    if (joining === key) setJoining(null);
   };
 
   const addFloor = () => {
@@ -397,8 +526,13 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
     return pt.matrixTransform(svg.getScreenCTM()!.inverse());
   };
 
-  const startDrag = (e: PointerEvent, kind: Kind, item: Box & { key: string }, mode: Drag["mode"]) => {
+  const startDrag = (e: PointerEvent, kind: Kind, item: Box & { key: string; rotation?: number }, mode: Drag["mode"]) => {
     e.stopPropagation();
+    // While joining tables, tapping a table adds or removes it instead of moving it.
+    if (joining && kind === "table" && mode === "move") {
+      toggleInJoin(item.key);
+      return;
+    }
     svgRef.current!.setPointerCapture(e.pointerId);
     const p = toPlan(e);
     setSel({ kind, key: item.key });
@@ -408,9 +542,23 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
       key: item.key,
       dx: mode === "move" ? p.x - item.x : item.x,
       dy: mode === "move" ? p.y - item.y : item.y,
+      cx: item.x + item.w / 2,
+      cy: item.y + item.h / 2,
+      rot: item.rotation ?? 0,
       before: plan,
       moved: false,
     });
+  };
+
+  /** Size from a resize drag. A rotated item resizes around its centre, measured along its own axes. */
+  const resizePatch = (d: Drag, p: { x: number; y: number }) => {
+    if (!d.rot) return { w: snap(p.x - d.dx), h: snap(p.y - d.dy) };
+    const a = (-d.rot * Math.PI) / 180;
+    const dx = p.x - d.cx;
+    const dy = p.y - d.cy;
+    const w = snap(Math.abs(dx * Math.cos(a) - dy * Math.sin(a)) * 2);
+    const h = snap(Math.abs(dx * Math.sin(a) + dy * Math.cos(a)) * 2);
+    return { w, h, x: snap(d.cx - w / 2), y: snap(d.cy - h / 2) };
   };
 
   const onMove = (e: PointerEvent) => {
@@ -419,7 +567,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
     const patch =
       drag.mode === "move"
         ? { x: snap(p.x - drag.dx), y: snap(p.y - drag.dy) }
-        : { w: snap(p.x - drag.dx), h: snap(p.y - drag.dy) };
+        : resizePatch(drag, p);
     setPlan((cur) => patched(cur, drag.kind, drag.key, patch));
     if (!drag.moved) setDrag({ ...drag, moved: true });
   };
@@ -465,6 +613,15 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
   const selTable = sel?.kind === "table" ? (selected as ETable | undefined) : undefined;
   const selZone = sel?.kind === "zone" ? (selected as EZone | undefined) : undefined;
   const selFixture = sel?.kind === "fixture" ? (selected as EFixture | undefined) : undefined;
+  const joinCombo = joining ? floor.combos.find((c) => c.key === joining) : undefined;
+  const labelOfKey = new Map(floor.tables.map((t) => [t.key, t.label]));
+  const comboName = (c: ECombo) => c.tableKeys.map((k) => labelOfKey.get(k)).join("+");
+  // Outlines for the group being edited, or the groups of the selected table.
+  const shownCombos = joinCombo
+    ? [joinCombo]
+    : selTable
+      ? floor.combos.filter((c) => c.tableKeys.includes(selTable.key))
+      : [];
   const handle = Math.max(16, 22 / zoom);
   const itemProps = (kind: Kind, item: Box & { key: string }, label: string) => ({
     tabIndex: 0,
@@ -551,11 +708,15 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
             {fixturesInOrder.map((x) => (
               <g key={x.key} className={`fx-item${sel?.key === x.key ? " is-selected" : ""}`} {...itemProps("fixture", x, `${FIXTURE_NAMES[x.kind]} ${x.label}`)}>
                 <FixtureShape f={x} />
-                <rect className="fx-hit" x={x.x - 6} y={x.y - 6} width={x.w + 12} height={x.h + 12} />
+                <rect className="fx-hit" x={x.x - 6} y={x.y - 6} width={x.w + 12} height={x.h + 12} transform={rotateAbout(x)} />
               </g>
             ))}
             {floor.tables.map((t) => (
-              <g key={t.key} className={`tb${sel?.key === t.key ? " is-selected" : ""}${t.bookableOnline ? "" : " is-offline"}`} {...itemProps("table", t, `Tavolo ${t.label}, ${t.seats} posti`)}>
+              <g
+                key={t.key}
+                className={`tb${sel?.key === t.key ? " is-selected" : ""}${t.bookableOnline ? "" : " is-offline"}${joinCombo?.tableKeys.includes(t.key) ? " is-picked" : ""}`}
+                {...itemProps("table", t, `Tavolo ${t.label}, ${t.seats} posti`)}
+              >
                 <TableShape t={t} lines={[fit(t.label, t.w, 13), t.minCovers > 1 ? `${t.minCovers}–${t.seats}` : `${t.seats} posti`]} />
               </g>
             ))}
@@ -564,8 +725,15 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
                 <rect className="zone-grab" x={z.x} y={z.y} width={zoneTabWidth(z)} height={36} {...itemProps("zone", z, `Sala ${z.name}`)} />
               </ZoneTab>
             ))}
-            {selected && sel && (
-              <g className="sel-frame">
+            {shownCombos.map((c) => (
+              <ComboOutline
+                key={c.key}
+                tables={floor.tables.filter((t) => c.tableKeys.includes(t.key))}
+                label={`${comboName(c)} · ${c.minCovers}–${c.maxCovers}`}
+              />
+            ))}
+            {selected && sel && !joining && (
+              <g className="sel-frame" transform={rotateAbout(selected)}>
                 <rect x={selected.x} y={selected.y} width={selected.w} height={selected.h} />
                 <rect
                   className="sel-handle"
@@ -607,7 +775,51 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
           </div>
         )}
 
-        {selTable && (
+        {joinCombo && (
+          <div className="panel stack">
+            <h2>Unisci tavoli</h2>
+            <p>
+              Tocca sulla pianta i tavoli da unire. Uniti: <strong>{joinCombo.tableKeys.length > 0 ? comboName(joinCombo) : "nessuno"}</strong>
+            </p>
+            <div className="grid-fields">
+              <NumberField
+                label="Persone min"
+                value={joinCombo.minCovers}
+                min={1}
+                max={joinCombo.maxCovers}
+                onChange={(v) => setCombos((cs) => cs.map((c) => (c.key === joinCombo.key ? { ...c, minCovers: v, auto: false } : c)))}
+              />
+              <NumberField
+                label="Persone max"
+                value={joinCombo.maxCovers}
+                min={1}
+                max={200}
+                onChange={(v) =>
+                  setCombos((cs) => cs.map((c) => (c.key === joinCombo.key ? { ...c, maxCovers: v, minCovers: Math.min(c.minCovers, v), auto: false } : c)))
+                }
+              />
+            </div>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={joinCombo.bookableOnline}
+                onChange={(e) => setCombos((cs) => cs.map((c) => (c.key === joinCombo.key ? { ...c, bookableOnline: e.target.checked } : c)))}
+              />
+              Prenotabile online
+            </label>
+            <p className="small muted">
+              Online li uniamo solo per gruppi da {joinCombo.minCovers} a {joinCombo.maxCovers} persone, quando nessun tavolo da solo basta e tutti sono liberi.
+            </p>
+            <div className="row" style={{ gap: 6 }}>
+              <button type="button" className="btn btn-small btn-fill" onClick={finishJoin}>
+                {joinCombo.tableKeys.length > 1 ? "Fatto" : "Annulla"}
+              </button>
+              <button type="button" className="btn btn-small btn-danger" onClick={() => removeCombo(joinCombo.key)}>Elimina unione</button>
+            </div>
+          </div>
+        )}
+
+        {selTable && !joining && (
           <div className="panel stack">
             <h2>Tavolo {selTable.label}</h2>
             <p className="small muted">In: {zoneFor({ ...selTable, floorId: "" }, floor.zones.map((z) => ({ ...z, floorId: "" })))?.name ?? "nessuna sala"}</p>
@@ -641,6 +853,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
               />
               <NumberField label="Larghezza (cm)" value={selTable.w} min={30} max={floor.width} step={5} onChange={(v) => update("table", selTable.key, { w: v })} />
               <NumberField label="Profondità (cm)" value={selTable.h} min={30} max={floor.height} step={5} onChange={(v) => update("table", selTable.key, { h: v })} />
+              <AngleField value={selTable.rotation} onChange={(v) => update("table", selTable.key, { rotation: v })} />
             </div>
             <label className="check">
               <input type="checkbox" checked={selTable.bookableOnline} onChange={(e) => update("table", selTable.key, { bookableOnline: e.target.checked })} />
@@ -648,10 +861,20 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
             </label>
             <p className="small muted">Online lo diamo solo a gruppi da {selTable.minCovers} a {selTable.seats} persone. Dalla sala puoi sempre metterci chi vuoi.</p>
             <ItemButtons onRotate={() => update("table", selTable.key, { w: selTable.h, h: selTable.w })} onDuplicate={() => duplicate("table", selTable.key)} onDelete={() => remove("table", selTable.key)} />
+            <div className="stack" style={{ gap: 8 }}>
+              <h3>Tavoli uniti</h3>
+              {floor.combos.filter((c) => c.tableKeys.includes(selTable.key)).length === 0 && (
+                <p className="small muted">Per gruppi grandi puoi unire questo tavolo ad altri vicini.</p>
+              )}
+              <ComboList combos={floor.combos.filter((c) => c.tableKeys.includes(selTable.key))} name={comboName} onEdit={setJoining} onDelete={removeCombo} />
+              <div>
+                <button type="button" className="btn btn-small" onClick={() => startJoin(selTable.key)}>Unisci con altri tavoli</button>
+              </div>
+            </div>
           </div>
         )}
 
-        {selZone && (
+        {selZone && !joining && (
           <div className="panel stack">
             <h2>{selZone.name || "Sala"}</h2>
             <label className="field">
@@ -667,11 +890,14 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
               Prenotabile online
             </label>
             <p className="small muted">I tavoli dentro quest’area fanno parte di “{selZone.name}”. Se ci sono più aree prenotabili, l’ospite può scegliere dove sedersi.</p>
+            <p className="small muted">
+              Sala a L o di forma irregolare? Disegnala con più aree con lo stesso nome: contano come una sala sola, anche per chi prenota e per le chiusure.
+            </p>
             <ItemButtons onDelete={() => remove("zone", selZone.key)} />
           </div>
         )}
 
-        {selFixture && (
+        {selFixture && !joining && (
           <div className="panel stack">
             <h2>{FIXTURE_NAMES[selFixture.kind]}</h2>
             <div className="grid-fields">
@@ -689,6 +915,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
               </label>
               <NumberField label="Larghezza (cm)" value={selFixture.w} min={10} max={floor.width} step={5} onChange={(v) => update("fixture", selFixture.key, { w: v })} />
               <NumberField label="Profondità (cm)" value={selFixture.h} min={10} max={floor.height} step={5} onChange={(v) => update("fixture", selFixture.key, { h: v })} />
+              <AngleField value={selFixture.rotation} onChange={(v) => update("fixture", selFixture.key, { rotation: v })} />
             </div>
             <ItemButtons
               onRotate={() => update("fixture", selFixture.key, { w: selFixture.h, h: selFixture.w })}
@@ -698,7 +925,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
           </div>
         )}
 
-        {!sel && (
+        {!sel && !joining && (
           <div className="panel stack">
             <h2>{floor.name}</h2>
             <div className="grid-fields">
@@ -757,7 +984,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
 }
 
 /** A number input that only reports valid numbers, so typing "1" on the way to "12" doesn't jump the drawing. */
-function NumberField({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
+function NumberInput({ value, min, max, step = 1, onChange, label }: { value: number; min: number; max: number; step?: number; onChange: (v: number) => void; label?: string }) {
   const [draft, setDraft] = useState<string | null>(null);
   const commitDraft = () => {
     if (draft === null) return;
@@ -766,28 +993,72 @@ function NumberField({ label, value, min, max, step = 1, onChange }: { label: st
     setDraft(null);
   };
   return (
+    <input
+      className="input"
+      type="number"
+      inputMode="decimal"
+      aria-label={label}
+      min={min}
+      max={max}
+      step={step}
+      value={draft ?? String(value)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commitDraft}
+      onKeyDown={(e) => e.key === "Enter" && commitDraft()}
+    />
+  );
+}
+
+function NumberField({ label, ...props }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
+  return (
     <label className="field">
       {label}
-      <input
-        className="input"
-        type="number"
-        inputMode="decimal"
-        min={min}
-        max={max}
-        step={step}
-        value={draft ?? String(value)}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commitDraft}
-        onKeyDown={(e) => e.key === "Enter" && commitDraft()}
-      />
+      <NumberInput {...props} />
     </label>
+  );
+}
+
+/** Angle in degrees, with quick 15° turns either way. */
+function AngleField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const turn = (d: number) => onChange((((value + d) % 360) + 360) % 360);
+  return (
+    <div className="field">
+      Angolo (°)
+      <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+        <button type="button" className="btn btn-small" aria-label="Ruota di 15° a sinistra" onClick={() => turn(-15)}>↺</button>
+        <NumberInput value={value} min={0} max={359} step={5} onChange={onChange} label="Angolo in gradi" />
+        <button type="button" className="btn btn-small" aria-label="Ruota di 15° a destra" onClick={() => turn(15)}>↻</button>
+      </div>
+    </div>
+  );
+}
+
+function ComboList({ combos, name, onEdit, onDelete }: { combos: ECombo[]; name: (c: ECombo) => string; onEdit: (key: string) => void; onDelete: (key: string) => void }) {
+  if (!combos.length) return null;
+  return (
+    <ul className="list-plain">
+      {combos.map((c) => (
+        <li key={c.key}>
+          <span>
+            <strong>{name(c)}</strong>{" "}
+            <span className="small muted">
+              {c.minCovers}–{c.maxCovers} persone{c.bookableOnline ? "" : " · non online"}
+            </span>
+          </span>
+          <span className="row" style={{ gap: 4 }}>
+            <button type="button" className="btn btn-small btn-quiet" onClick={() => onEdit(c.key)}>Modifica</button>
+            <button type="button" className="btn btn-small btn-quiet" onClick={() => onDelete(c.key)}>Elimina</button>
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 function ItemButtons({ onRotate, onDuplicate, onDelete }: { onRotate?: () => void; onDuplicate?: () => void; onDelete: () => void }) {
   return (
     <div className="row" style={{ gap: 6 }}>
-      {onRotate && <button type="button" className="btn btn-small" onClick={onRotate}>Ruota</button>}
+      {onRotate && <button type="button" className="btn btn-small" onClick={onRotate}>Ruota 90°</button>}
       {onDuplicate && <button type="button" className="btn btn-small" onClick={onDuplicate}>Duplica</button>}
       <button type="button" className="btn btn-small btn-danger" onClick={onDelete}>Elimina</button>
     </div>

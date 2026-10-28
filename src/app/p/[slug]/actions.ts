@@ -2,6 +2,7 @@
 
 import { after } from "next/server";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
@@ -19,7 +20,7 @@ const bookingSchema = z.object({
   guestPhone: z.string().trim().min(6, "Scrivi un numero di telefono, serve se il ristorante deve contattarti.").max(40),
   guestEmail: z.email("Controlla l’email: ti mandiamo lì la conferma.").trim().toLowerCase(),
   notes: z.string().trim().max(500, "Le note possono avere al massimo 500 caratteri."),
-  zoneId: z.union([z.literal(""), z.uuid()]).optional(),
+  area: z.string().trim().max(40).optional(),
 });
 
 export async function createBooking(slug: string, embed: boolean, _: BookingResult, data: FormData): Promise<BookingResult> {
@@ -30,8 +31,8 @@ export async function createBooking(slug: string, embed: boolean, _: BookingResu
 
   const restaurant = await getRestaurantBySlug(slug);
   if (!restaurant) return { error: "Ristorante non trovato." };
-  const { zoneId, ...details } = parsed.data;
-  const result = await createOnlineReservation(restaurant, details, zoneId || null);
+  const { area, ...details } = parsed.data;
+  const result = await createOnlineReservation(restaurant, details, area || null);
   if (!result.ok) {
     return { unavailable: true, error: "Quell’orario è appena stato preso. Scegline un altro." };
   }
@@ -41,6 +42,7 @@ export async function createBooking(slug: string, embed: boolean, _: BookingResu
     await emailGuestConfirmation(restaurant, result.reservation);
     await emailRestaurantNewBooking(restaurant, result.reservation);
   });
+  revalidatePath(`/p/${slug}`, "layout");
   redirect(`/p/${slug}/prenotazione/${result.reservation.manageToken}${embed ? "?embed=1" : ""}`);
 }
 
@@ -60,5 +62,7 @@ export async function cancelBooking(data: FormData) {
       .returning();
     if (cancelled) after(() => emailCancellation(r, cancelled, "guest"));
   }
+  // Drop the browser's saved copy of the guest pages, so they see the cancellation and the freed time.
+  revalidatePath(`/p/${r.slug}`, "layout");
   redirect(`/p/${r.slug}/prenotazione/${token}${data.get("embed") ? "?embed=1" : ""}`);
 }

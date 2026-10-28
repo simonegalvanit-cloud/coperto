@@ -294,3 +294,11 @@ textarea.input { padding: 10px 12px; min-height: 84px; resize: vertical; }
 .tb.is-offline .tb-body { stroke-dasharray: 3 4; }
 .sel-frame rect:first-child { fill: none; stroke: var(--ok); stroke-width: 3; stroke-dasharray: 10 6; pointer-events: none; }
 .sel-handle { fill: var(--ok); stroke: var(--paper); stroke-width: 3; cursor: nwse-resize; touch-action: none; }
+
+/* Joined tables */
+.combo-outline rect { fill: none; stroke: var(--ok); stroke-width: 3; stroke-dasharray: 10 6; pointer-events: none; }
+.combo-outline text { fill: var(--ok); font-size: 18px; font-weight: 700; pointer-events: none; }
+.combo-outline.is-editing rect { stroke: var(--ink); }
+.combo-outline.is-editing text { fill: var(--ink); }
+.tb.is-picked .tb-body { stroke: var(--ok); stroke-width: 6; fill: rgba(36, 97, 58, 0.15); }
+.area-list li { flex-wrap: wrap; }
