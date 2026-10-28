@@ -365,3 +365,12 @@ body:has(.floor) .topbar-in { max-width: 1680px; }
 /* A table outside every drawn area */
 .tb.is-orphan .tb-body { stroke: var(--alert); stroke-dasharray: 6 4; }
 .angle-field .input { width: 76px; min-width: 76px; text-align: center; }
+
+/* Consent */
+.consent { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1.5px dashed var(--ink); background: var(--ground); }
+.check-top { align-items: flex-start; font-weight: 400; line-height: 1.45; }
+.check-top input { margin-top: 2px; flex: none; }
+.consent-sub { padding-left: 30px; }
+.privacy section { display: flex; flex-direction: column; gap: 8px; }
+.privacy ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.privacy-box { border-top: 1.5px solid var(--ink); padding-top: 16px; }

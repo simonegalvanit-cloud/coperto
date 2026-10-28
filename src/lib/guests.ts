@@ -1,51 +1,7 @@
 import "server-only";
-import { and, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
-import { getDb, schema, type DB } from "@/db";
-import { isSameDay, normalizeEmail, normalizePhone } from "./contact";
-
-type Tx = Parameters<Parameters<DB["transaction"]>[0]>[0];
-
-/**
- * The guest a booking belongs to: found by phone, then by email, or created. Fills in a phone or email the
- * profile didn't have yet. Returns null when there's nothing to recognise the guest by.
- */
-export async function guestFor(db: DB | Tx, restaurantId: string, contact: { guestName: string; guestPhone: string; guestEmail: string }) {
-  const phone = normalizePhone(contact.guestPhone);
-  const email = normalizeEmail(contact.guestEmail);
-  if (!phone && !email) return null;
-  const g = schema.guests;
-  const [byPhone] = phone ? await db.select().from(g).where(and(eq(g.restaurantId, restaurantId), eq(g.phone, phone))).limit(1) : [];
-  const [found] = byPhone ? [byPhone] : email ? await db.select().from(g).where(and(eq(g.restaurantId, restaurantId), eq(g.email, email))).limit(1) : [];
-  if (found) {
-    const fill = { ...(phone && !found.phone ? { phone } : {}), ...(email && !found.email ? { email } : {}) };
-    if (Object.keys(fill).length) await db.update(g).set({ ...fill, updatedAt: new Date() }).where(eq(g.id, found.id));
-    return found.id;
-  }
-  const [created] = await db
-    .insert(g)
-    .values({ restaurantId, name: contact.guestName.trim() || "Ospite", phone, email })
-    .returning({ id: g.id });
-  return created.id;
-}
-
-/**
- * Links bookings that have contact details but no guest yet: bookings made before profiles existed, or
- * whose phone or email was added later. Cheap when there's nothing to do.
- */
-export async function linkUnlinked(restaurantId: string) {
-  const db = await getDb();
-  const r = schema.reservations;
-  const rows = await db
-    .select({ id: r.id, guestName: r.guestName, guestPhone: r.guestPhone, guestEmail: r.guestEmail })
-    .from(r)
-    .where(and(eq(r.restaurantId, restaurantId), isNull(r.guestId), or(ne(r.guestPhone, ""), ne(r.guestEmail, ""))))
-    .orderBy(r.createdAt)
-    .limit(500);
-  for (const row of rows) {
-    const guestId = await guestFor(db, restaurantId, row);
-    if (guestId) await db.update(r).set({ guestId }).where(eq(r.id, row.id));
-  }
-}
+import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { getDb, schema } from "@/db";
+import { isSameDay } from "./contact";
 
 const VISIT = sql`${schema.reservations.status} in ('seated', 'completed')`;
 
@@ -86,7 +42,11 @@ export async function guestInfoFor(
   const db = await getDb();
   const date = bookings[0].date;
   const [profiles, counts] = await Promise.all([
-    db.select().from(schema.guests).where(and(eq(schema.guests.restaurantId, restaurantId), inArray(schema.guests.id, ids))),
+    // Only profiles the guest agreed to: one without consent is never shown to staff.
+    db
+      .select()
+      .from(schema.guests)
+      .where(and(eq(schema.guests.restaurantId, restaurantId), inArray(schema.guests.id, ids), isNotNull(schema.guests.profileConsentAt))),
     guestCounts(restaurantId, ids, date),
   ]);
   const byId = new Map(profiles.map((g) => [g.id, g]));
@@ -105,3 +65,5 @@ export async function guestInfoFor(
   }
   return result;
 }
+
+export { guestFor } from "./consent";

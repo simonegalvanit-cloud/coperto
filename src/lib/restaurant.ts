@@ -163,6 +163,7 @@ export async function createOnlineReservation(
   r: Restaurant,
   details: GuestDetails,
   area?: string | null,
+  consent: { profile: boolean; marketing: boolean } = { profile: false, marketing: false },
 ): Promise<{ ok: true; reservation: Reservation } | { ok: false }> {
   const db = await getDb();
   return db.transaction(async (tx) => {
@@ -171,7 +172,7 @@ export async function createOnlineReservation(
     if (!slotsFor(r, details.date, details.partySize, ctx, area).includes(details.time)) return { ok: false as const };
     // Restaurants that drew their room get the table (or joined tables) now, so the booking is on the plan straight away.
     const spot = ctx.tables.length > 0 ? spotFor(r, ctx, details.time, details.partySize, area) : null;
-    const guestId = await guestFor(tx, r.id, details);
+    const guestId = await guestFor(tx, r, details, { ...consent, source: "online" });
     const [reservation] = await tx
       .insert(schema.reservations)
       .values({

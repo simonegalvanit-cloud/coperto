@@ -14,6 +14,8 @@ function cell(value: string | number | boolean | null): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
+const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+
 /** All of a restaurant's guests as CSV: the data is theirs to take wherever they want. */
 export async function GET() {
   const account = await getCurrentAccount();
@@ -22,10 +24,10 @@ export async function GET() {
   const db = await getDb();
   const guests = await db.select().from(schema.guests).where(eq(schema.guests.restaurantId, restaurant.id)).orderBy(asc(schema.guests.name));
   const counts = await guestCounts(restaurant.id, guests.map((g) => g.id));
-  const header = ["Nome", "Telefono", "Email", "Visite", "No-show", "Cancellazioni", "Ultima visita", "Allergie", "Note", "VIP", "Compleanno", "Anniversario"];
+  const header = ["Nome", "Telefono", "Email", "Visite", "No-show", "Cancellazioni", "Ultima visita", "Allergie", "Note", "VIP", "Compleanno", "Anniversario", "Consenso scheda", "Consenso offerte"];
   const rows = guests.map((g) => {
     const c = counts.get(g.id);
-    return [g.name, g.phone, g.email, c?.visits ?? 0, c?.noShows ?? 0, c?.cancellations ?? 0, c?.lastVisit ?? "", g.allergies, g.notes, g.vip ? "sì" : "", g.birthday, g.anniversary];
+    return [g.name, g.phone, g.email, c?.visits ?? 0, c?.noShows ?? 0, c?.cancellations ?? 0, c?.lastVisit ?? "", g.allergies, g.notes, g.vip ? "sì" : "", g.birthday, g.anniversary, day(g.profileConsentAt), day(g.marketingConsentAt)];
   });
   // Semicolons and a BOM so Excel in Italian opens it with the right columns and accents.
   const csv = "﻿" + [header, ...rows].map((r) => r.map(cell).join(";")).join("\r\n");

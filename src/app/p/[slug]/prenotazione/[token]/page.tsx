@@ -5,6 +5,7 @@ import { getReservationByToken } from "@/lib/restaurant";
 import { capitalize, daysBetween, formatDate, nowIn, toMinutes } from "@/lib/time";
 import { cancelBooking, confirmPresence } from "../../actions";
 import { PublicShell } from "../../PublicShell";
+import { PrivacyBox } from "./PrivacyBox";
 
 export const metadata: Metadata = { title: "La tua prenotazione", robots: { index: false } };
 
@@ -83,6 +84,9 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
         <p>
           <a className="btn" href={`/p/${r.slug}${embed ? "?embed=1" : ""}`}>Prenota di nuovo</a>
         </p>
+      )}
+      {(b.guestId || (!cancelled && (b.guestPhone || b.guestEmail))) && (
+        <PrivacyBox token={token} linked={!!b.guestId} restaurant={r.name} slug={r.slug} />
       )}
     </PublicShell>
   );

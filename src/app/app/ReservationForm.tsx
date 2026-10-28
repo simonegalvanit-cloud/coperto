@@ -83,6 +83,23 @@ export function ReservationForm({
           </select>
         </label>
       )}
+      {initial?.guestId ? (
+        <p className="small muted">Collegata alla scheda dell’ospite, che ha scelto di essere ricordato.</p>
+      ) : (
+        <div className="consent">
+          <label className="check check-top">
+            <input type="checkbox" name="remember" />
+            <span>
+              <strong>L’ospite vuole essere ricordato.</strong> Chiediglielo: visite, preferenze e allergie restano per le prossime volte.
+              Senza il suo sì, i dati servono solo per questa prenotazione.
+            </span>
+          </label>
+          <label className="check check-top consent-sub">
+            <input type="checkbox" name="marketing" />
+            <span>Vuole anche ricevere offerte e novità (solo insieme alla scheda)</span>
+          </label>
+        </div>
+      )}
       <label className="check">
         <input type="checkbox" name="outsideHours" /> Accetta anche fuori orario o in un giorno di chiusura
       </label>

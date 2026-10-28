@@ -270,7 +270,8 @@ async function seatNow(
     source: "walk_in",
     status: "seated",
     tableId: table.id,
-    guestId: await guestFor(db, restaurant.id, contact),
+    // Walk-ins join a profile only if the guest already agreed to be remembered.
+    guestId: await guestFor(db, restaurant, contact),
     manageToken: randomToken(),
   });
   return null;

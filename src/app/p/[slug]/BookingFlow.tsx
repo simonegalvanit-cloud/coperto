@@ -2,6 +2,7 @@
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { capitalize } from "@/lib/time";
+import { marketingWording, profileWording } from "@/lib/consent-wording";
 import { DatePicker } from "@/components/DatePicker";
 import { createBooking, joinWaitlist, type BookingResult, type WaitResult } from "./actions";
 import { checkContact, FieldError, focusFirstError } from "@/components/FieldError";
@@ -42,6 +43,8 @@ export function BookingFlow({
   );
   const [zone, setZone] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Unticked by default: remembering a guest needs their yes (GDPR).
+  const [remember, setRemember] = useState(false);
   const clearError = (name: string) =>
     setFieldErrors((errors) => {
       if (!errors[name]) return errors;
@@ -164,6 +167,18 @@ export function BookingFlow({
               <FieldError id="err-guestEmail" message={fieldErrors.guestEmail} />
             </label>
           </div>
+          <div className="consent">
+            <label className="check check-top">
+              <input type="checkbox" name="remember" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <span>{profileWording(restaurantName)}</span>
+            </label>
+            {remember && (
+              <label className="check check-top consent-sub">
+                <input type="checkbox" name="marketing" />
+                <span>{marketingWording(restaurantName)}</span>
+              </label>
+            )}
+          </div>
           {Object.keys(fieldErrors).length > 0 && (
             <p className="form-error" role="alert">Controlla i campi segnati in rosso.</p>
           )}
@@ -176,7 +191,8 @@ export function BookingFlow({
             {pending ? "Prenoto…" : "Conferma la prenotazione"}
           </button>
           <p className="small muted">
-            Usiamo i tuoi dati solo per gestire questa prenotazione e li condividiamo con {restaurantName}.
+            Senza “Ricordati di me” usiamo i tuoi dati solo per questa prenotazione.{" "}
+            <a href={`/p/${slug}/privacy`} target={embed ? "_blank" : undefined}>Informativa privacy</a>
           </p>
         </form>
       </>

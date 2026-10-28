@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import type { Reservation } from "@/db/schema";
@@ -11,7 +11,7 @@ import { requireAccount } from "@/lib/auth";
 import { formatPhone } from "@/lib/contact";
 import { guestCounts } from "@/lib/guests";
 import { capitalize, formatDate, nowIn } from "@/lib/time";
-import { deleteGuest, saveGuest } from "../actions";
+import { deleteGuest, recordConsent, saveGuest, setGuestMarketing } from "../actions";
 
 export const metadata: Metadata = { title: "Ospite", robots: { index: false } };
 
@@ -24,12 +24,15 @@ const STATUS: Record<Reservation["status"], string> = {
   no_show: "No-show",
 };
 
+const SOURCE: Record<string, string> = { online: "online", staff: "registrato da voi", guest_link: "dall’ospite, dal suo link" };
+const when = (d: Date) => new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeZone: "Europe/Rome" }).format(d);
+
 export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]">) {
   const { restaurant } = await requireAccount();
   const id = z.uuid().safeParse((await params).id);
   if (!id.success) notFound();
   const db = await getDb();
-  const [[guest], history, counts] = await Promise.all([
+  const [[guest], history, counts, consents] = await Promise.all([
     db.select().from(schema.guests).where(and(eq(schema.guests.id, id.data), eq(schema.guests.restaurantId, restaurant.id))),
     db
       .select()
@@ -38,6 +41,7 @@ export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]"
       .orderBy(desc(schema.reservations.date), desc(schema.reservations.time))
       .limit(200),
     guestCounts(restaurant.id, [id.data]),
+    db.select().from(schema.consentLog).where(eq(schema.consentLog.guestId, id.data)).orderBy(asc(schema.consentLog.createdAt)),
   ]);
   if (!guest) notFound();
   const c = counts.get(guest.id) ?? { visits: 0, noShows: 0, cancellations: 0, lastVisit: null };
@@ -55,6 +59,22 @@ export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]"
         </h1>
         <p className="muted">{[guest.phone && formatPhone(guest.phone), guest.email].filter(Boolean).join(" · ")}</p>
       </div>
+
+      {!guest.profileConsentAt && (
+        <form action={recordConsent} className="panel stack" style={{ gap: 8 }}>
+          <input type="hidden" name="id" value={guest.id} />
+          <p>
+            <strong>Scheda spenta: manca il consenso.</strong> È stata creata prima che Coperto lo chiedesse, quindi non
+            compare sulle prenotazioni. Chiedi all’ospite se vuole essere ricordato (visite, preferenze e allergie). Se dice
+            sì, registralo; se dice no, elimina la scheda.
+          </p>
+          <div>
+            <ConfirmButton className="btn btn-small btn-fill" question={`${guest.name} ti ha detto che vuole farsi ricordare?`} confirmLabel="Sì, registra">
+              L’ospite ha detto sì: registra il consenso
+            </ConfirmButton>
+          </div>
+        </form>
+      )}
 
       <div className="totals">
         <div><strong>{c.visits}</strong><span>visite</span></div>
@@ -107,6 +127,38 @@ export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]"
               <input type="checkbox" name="vip" defaultChecked={guest.vip} /> Cliente VIP
             </label>
           </ActionForm>
+          <div className="stack" style={{ gap: 8, borderTop: "1.5px solid var(--ink)", paddingTop: 14 }}>
+            <h3>Consensi</h3>
+            <p className="small">
+              {guest.profileConsentAt
+                ? `Scheda: sì, dal ${when(guest.profileConsentAt)} (${SOURCE[guest.profileConsentSource ?? "staff"]}).`
+                : "Scheda: nessun consenso."}{" "}
+              Allergie e note si conservano solo con questo consenso.
+            </p>
+            {guest.profileConsentAt && (
+              <form action={setGuestMarketing} className="row" style={{ gap: 8 }}>
+                <input type="hidden" name="id" value={guest.id} />
+                <input type="hidden" name="on" value={guest.marketingConsentAt ? "0" : "1"} />
+                <span className="small">Offerte: {guest.marketingConsentAt ? `sì, dal ${when(guest.marketingConsentAt)}` : "no"}</span>
+                <button type="submit" className="btn btn-small">{guest.marketingConsentAt ? "L’ospite non le vuole più" : "L’ospite le vuole"}</button>
+              </form>
+            )}
+            {consents.length > 0 && (
+              <details>
+                <summary className="small">Storico ({consents.length})</summary>
+                <ul className="list-plain">
+                  {consents.map((x) => (
+                    <li key={x.id} className="small">
+                      <span>
+                        {when(x.createdAt)} · {x.kind === "profile" ? "scheda" : "offerte"} {x.action === "granted" ? "sì" : "no"} ({SOURCE[x.source]})
+                        <span className="muted" style={{ display: "block" }}>“{x.wording}”</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
           <form action={deleteGuest} className="stack" style={{ gap: 6, borderTop: "1.5px solid var(--ink)", paddingTop: 14 }}>
             <input type="hidden" name="id" value={guest.id} />
             <p className="small muted">Se l’ospite chiede di essere dimenticato (GDPR), elimina la scheda: le sue prenotazioni restano solo come numeri, senza nome né contatti.</p>
