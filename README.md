@@ -52,17 +52,21 @@ and emails are printed in the terminal instead of being sent.
 
 ## Put it online
 
-1. **Database**: create a free project on [Supabase](https://supabase.com) in the *Frankfurt (eu-central-1)* region.
-   In *Connect → Transaction pooler* copy the connection string.
-2. **Email**: create a free account on [Resend](https://resend.com), verify your domain, create an API key.
-3. **Hosting**: import this GitHub repository on [Vercel](https://vercel.com) and set these environment variables:
+1. **Database**: in your Vercel project open **Storage → Create Database → Supabase**, choose the *Frankfurt* region
+   and connect it to all environments. Vercel adds the database address by itself.
+   (Or create the project on [supabase.com](https://supabase.com) and add its *Transaction pooler* connection string
+   as `DATABASE_URL`.)
+2. **Email** (optional at first): create a free account on [Resend](https://resend.com), verify your domain, create an API key.
+3. **Hosting**: in the Vercel project add these environment variables when you're ready for email:
 
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | The Supabase connection string |
 | `RESEND_API_KEY` | The Resend API key |
 | `EMAIL_FROM` | e.g. `Coperto <prenotazioni@tuodominio.it>` |
 | `APP_URL` | Your public address, e.g. `https://coperto.it` |
+
+The app reads the database address from `DATABASE_URL`, or from `POSTGRES_URL` as set by Vercel's Supabase and Neon integrations.
+Without any of the email variables, emails are written to Vercel's logs instead of being sent.
 
 Every deploy applies database changes automatically before building.
 
