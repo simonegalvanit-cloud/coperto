@@ -2,9 +2,19 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
-import { autoAssign as planAssignments, conflictOn, PLAN_H, PLAN_W, tableStates, type FloorBooking, type PlanTable, type TableState } from "@/lib/floor";
+import {
+  autoAssign as planAssignments,
+  conflictOn,
+  tableStates,
+  type FloorBooking,
+  type PlanFixture,
+  type PlanFloor,
+  type PlanTable,
+  type PlanZone,
+  type TableState,
+} from "@/lib/floor";
 import { fromMinutes, toMinutes } from "@/lib/time";
-import { fit, PlanGrid, PlanTableShape } from "@/components/PlanTableShape";
+import { FixtureShape, fit, PlanDefs, TableShape, ZoneBody, ZoneTab } from "@/components/PlanShapes";
 import { assignTable, autoAssign, seatWalkIn, setFloorStatus, type FloorResult } from "./actions";
 
 const STATE_LABEL: Record<TableState["state"], string> = {
@@ -34,6 +44,9 @@ export function FloorLive({
   range,
   startAt,
   durationMinutes,
+  floors,
+  zones,
+  fixtures,
   tables,
   bookings,
 }: {
@@ -45,6 +58,9 @@ export function FloorLive({
   startAt: number;
   /** Default length of a stay, for walk-ins shown before the server confirms them. */
   durationMinutes: number;
+  floors: PlanFloor[];
+  zones: PlanZone[];
+  fixtures: PlanFixture[];
   tables: PlanTable[];
   bookings: FloorBooking[];
 }) {
@@ -57,6 +73,10 @@ export function FloorLive({
   const [message, setMessage] = useState<FloorResult>(null);
   const [pending, startTransition] = useTransition();
   const [view, show] = useOptimistic(bookings, applyChanges);
+  const [zoom, setZoom] = useState(1);
+  const [floorId, setFloorId] = useState(() => tables[0]?.floorId ?? floors[0]?.id);
+  const floor = floors.find((f) => f.id === floorId) ?? floors[0];
+  const zoneName = new Map(zones.map((z) => [z.id, z.name]));
 
   // In live mode the clock follows the server's "now", which refreshes every few seconds.
   const t = live ? nowMinutes : picked;
@@ -129,11 +149,49 @@ export function FloorLive({
           </div>
         )}
 
+        {floors.length > 1 && (
+          <div className="floor-tabs" role="tablist" aria-label="Piani">
+            {floors.map((f) => {
+              const fitting = placingBooking ? tables.filter((tb) => tb.floorId === f.id && fits(tb)).length : 0;
+              return (
+                <button key={f.id} type="button" role="tab" aria-selected={f.id === floor.id} className="floor-tab" onClick={() => setFloorId(f.id)}>
+                  {f.name}
+                  {placingBooking && <span className="floor-tab-count"> · {fitting} adatti</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="plan-tools">
+          <span className="plan-tools-gap" />
+          <button type="button" className="btn btn-small" aria-label="Riduci" disabled={zoom <= 1} onClick={() => setZoom((z) => Math.max(1, z - 0.5))}>−</button>
+          <span className="small num">{Math.round(zoom * 100)}%</span>
+          <button type="button" className="btn btn-small" aria-label="Ingrandisci" disabled={zoom >= 3} onClick={() => setZoom((z) => Math.min(3, z + 0.5))}>+</button>
+        </div>
+
         <div className="plan-scroll">
-          <svg className="plan-svg" viewBox={`0 0 ${PLAN_W} ${PLAN_H}`} role="group" aria-label={`Sala alle ${fromMinutes(t)}`}>
-            <PlanGrid />
-            <rect className="plan-floor" x="0" y="0" width={PLAN_W} height={PLAN_H} onClick={() => setSelected(null)} />
-            {tables.map((tb) => {
+          <svg
+            className="plan-svg"
+            style={{ width: `${zoom * 100}%`, minWidth: 620 * zoom }}
+            viewBox={`0 0 ${floor.width} ${floor.height}`}
+            role="group"
+            aria-label={`${floor.name} alle ${fromMinutes(t)}`}
+          >
+            <PlanDefs />
+            <rect className="plan-floor" x="0" y="0" width={floor.width} height={floor.height} onClick={() => setSelected(null)} />
+            {zones
+              .filter((z) => z.floorId === floor.id)
+              .map((z) => (
+                <ZoneBody key={z.id} z={z} />
+              ))}
+            {fixtures
+              .filter((x) => x.floorId === floor.id)
+              .sort((a, b) => Number(b.kind === "wall") - Number(a.kind === "wall"))
+              .map((x) => (
+                <FixtureShape key={x.id} f={x} />
+              ))}
+            {tables.filter((tb) => tb.floorId === floor.id).map((tb) => {
               const s = states.get(tb.id)!;
               const who = s.booking ? fit(s.booking.guestName, tb.w) : "";
               const lines = [fit(tb.label, tb.w, 13)];
@@ -156,10 +214,15 @@ export function FloorLive({
                     }
                   }}
                 >
-                  <PlanTableShape t={tb} lines={lines} />
+                  <TableShape t={tb} lines={lines} />
                 </g>
               );
             })}
+            {zones
+              .filter((z) => z.floorId === floor.id)
+              .map((z) => (
+                <ZoneTab key={z.id} z={z} />
+              ))}
           </svg>
         </div>
         <div className="legend small">
@@ -179,7 +242,10 @@ export function FloorLive({
           <div className="panel stack">
             <div className="spread">
               <h2>Tavolo {sel.label}</h2>
-              <span className="small muted">{sel.seats} posti · {STATE_LABEL[selState.state]}</span>
+              <span className="small muted">
+                {sel.zoneId && zoneName.get(sel.zoneId) ? `${zoneName.get(sel.zoneId)} · ` : ""}
+                {sel.minCovers > 1 ? `${sel.minCovers}–${sel.seats}` : sel.seats} posti · {STATE_LABEL[selState.state]}
+              </span>
             </div>
 
             {selState.booking && (

@@ -106,7 +106,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/imp
           </label>
           <div className="grid-3">
             <label className="field">
-              Posti in sala <span className="hint">Coperti seduti contemporaneamente</span>
+              Posti in sala <span className="hint">Conta finché non disegni il locale: poi decidono i tavoli</span>
               <input className="input" type="number" name="capacity" min={1} defaultValue={r.capacity} required />
             </label>
             <label className="field">

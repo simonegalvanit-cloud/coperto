@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Reservation } from "@/db/schema";
 import { requireAccount } from "@/lib/auth";
+import { tableOptions } from "@/lib/plan";
 import { ACTIVE_STATUSES } from "@/lib/restaurant";
 import { addDays, capitalize, formatDate, isDate, nowIn, toMinutes, weekdayOf } from "@/lib/time";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -30,12 +31,9 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
       .select()
       .from(schema.closures)
       .where(and(eq(schema.closures.restaurantId, restaurant.id), eq(schema.closures.date, date))),
-    db
-      .select({ id: schema.diningTables.id, label: schema.diningTables.label })
-      .from(schema.diningTables)
-      .where(eq(schema.diningTables.restaurantId, restaurant.id)),
+    tableOptions(restaurant.id),
   ]);
-  const tableLabel = new Map(tables.map((t) => [t.id, t.label]));
+  const tableLabel = new Map(tables.map((t) => [t.id, t.zone ? `${t.label} · ${t.zone}` : t.label]));
 
   const active = bookings.filter((b) => (ACTIVE_STATUSES as readonly string[]).includes(b.status) || b.status === "completed");
   const covers = (list: Reservation[]) => list.reduce((n, b) => n + b.partySize, 0);

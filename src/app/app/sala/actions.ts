@@ -5,51 +5,128 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { randomToken, requireAccount } from "@/lib/auth";
-import { autoAssign as planAssignments, conflictOn, PLAN_H, PLAN_W, type FloorBooking } from "@/lib/floor";
+import { autoAssign as planAssignments, conflictOn, zoneFor, type FloorBooking } from "@/lib/floor";
 import { fromMinutes, isDate, nowIn } from "@/lib/time";
 
 export type FloorResult = { error?: string; ok?: string } | null;
 
-const tableSchema = z
-  .object({
-    id: z.uuid().optional(),
-    label: z.string().trim().min(1, "Ogni tavolo ha bisogno di un nome.").max(12, "Il nome di un tavolo può avere al massimo 12 caratteri."),
-    seats: z.number().int().min(1).max(50, "Un tavolo può avere al massimo 50 posti."),
-    shape: z.enum(["square", "round", "rect"]),
-    x: z.number().int().min(0),
-    y: z.number().int().min(0),
-    w: z.number().int().min(30).max(PLAN_W),
-    h: z.number().int().min(30).max(PLAN_H),
-  })
-  .refine((t) => t.x + t.w <= PLAN_W && t.y + t.h <= PLAN_H, "Un tavolo è fuori dalla sala.");
+const MAX_SIZE = 10_000; // 100 m
+const int = z.number().int();
+const box = { x: int.min(0), y: int.min(0), w: int.min(10).max(MAX_SIZE), h: int.min(10).max(MAX_SIZE) };
 
-/** Replaces the whole plan: updates kept tables, adds new ones, deletes removed ones (their bookings become unassigned). */
+const tableSchema = z.object({
+  id: z.uuid().optional(),
+  label: z.string().trim().min(1, "Ogni tavolo ha bisogno di un nome.").max(12, "Il nome di un tavolo può avere al massimo 12 caratteri."),
+  seats: int.min(1).max(50, "Un tavolo può avere al massimo 50 posti."),
+  minCovers: int.min(1),
+  bookableOnline: z.boolean(),
+  shape: z.enum(["square", "round", "rect"]),
+  ...box,
+  w: int.min(30, "Un tavolo deve essere largo almeno 30 cm.").max(MAX_SIZE),
+  h: int.min(30, "Un tavolo deve essere profondo almeno 30 cm.").max(MAX_SIZE),
+});
+
+const zoneSchema = z.object({
+  name: z.string().trim().min(1, "Ogni sala ha bisogno di un nome.").max(40),
+  bookableOnline: z.boolean(),
+  ...box,
+});
+
+const fixtureSchema = z.object({
+  kind: z.enum(schema.fixtureKind.enumValues),
+  label: z.string().trim().max(40),
+  ...box,
+});
+
+const floorSchema = z.object({
+  id: z.uuid().optional(),
+  name: z.string().trim().min(1, "Ogni piano ha bisogno di un nome.").max(40),
+  level: int.min(-5).max(50),
+  width: int.min(200, "Un piano deve essere largo almeno 2 m.").max(MAX_SIZE, "Un piano può essere largo al massimo 100 m."),
+  height: int.min(200, "Un piano deve essere profondo almeno 2 m.").max(MAX_SIZE, "Un piano può essere profondo al massimo 100 m."),
+  zones: z.array(zoneSchema).max(50),
+  fixtures: z.array(fixtureSchema).max(500),
+  tables: z.array(tableSchema).max(300),
+});
+
+const planSchema = z.array(floorSchema).min(1, "Serve almeno un piano.").max(10, "Al massimo 10 piani.");
+
+export type FloorPlanInput = z.input<typeof planSchema>;
+
+/**
+ * Replaces the whole plan. Floors and tables keep their ids (bookings point at tables), zones and fixtures
+ * are rewritten, and each table's zone is worked out from where it sits. Removed tables' bookings become unassigned.
+ */
 export async function saveFloorPlan(input: unknown): Promise<FloorResult> {
   const { restaurant } = await requireAccount();
-  const parsed = z.array(tableSchema).max(200, "Al massimo 200 tavoli.").safeParse(input);
+  const parsed = planSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const labels = parsed.data.map((t) => t.label.toLowerCase());
+  const plan = parsed.data;
+
+  for (const f of plan) {
+    const outside = [...f.zones, ...f.fixtures, ...f.tables].find((b) => b.x + b.w > f.width || b.y + b.h > f.height);
+    if (outside) return { error: `Su “${f.name}” c’è qualcosa fuori dal piano: allarga il piano o spostalo dentro.` };
+    const tight = f.tables.find((t) => t.minCovers > t.seats);
+    if (tight) return { error: `Il tavolo ${tight.label} ha il minimo di persone più alto del massimo.` };
+  }
+  const labels = plan.flatMap((f) => f.tables.map((t) => t.label.toLowerCase()));
   const dupe = labels.find((l, i) => labels.indexOf(l) !== i);
-  if (dupe) return { error: `Ci sono due tavoli chiamati “${parsed.data[labels.indexOf(dupe)].label}”.` };
+  if (dupe) {
+    const original = plan.flatMap((f) => f.tables).find((t) => t.label.toLowerCase() === dupe)!.label;
+    return { error: `Ci sono due tavoli chiamati “${original}”.` };
+  }
 
   const db = await getDb();
   await db.transaction(async (tx) => {
-    const existing = new Set(
-      (await tx.select({ id: schema.diningTables.id }).from(schema.diningTables).where(eq(schema.diningTables.restaurantId, restaurant.id))).map((r) => r.id),
+    const own = (rows: { id: string }[]) => new Set(rows.map((r) => r.id));
+    const oldFloors = own(await tx.select({ id: schema.floors.id }).from(schema.floors).where(eq(schema.floors.restaurantId, restaurant.id)));
+    const oldTables = own(
+      await tx.select({ id: schema.diningTables.id }).from(schema.diningTables).where(eq(schema.diningTables.restaurantId, restaurant.id)),
     );
-    const keep = new Set<string>();
-    for (const { id, ...t } of parsed.data) {
-      if (id && existing.has(id)) {
-        keep.add(id);
-        await tx.update(schema.diningTables).set(t).where(eq(schema.diningTables.id, id));
+    await tx.delete(schema.zones).where(eq(schema.zones.restaurantId, restaurant.id));
+    await tx.delete(schema.fixtures).where(eq(schema.fixtures.restaurantId, restaurant.id));
+
+    const keptFloors = new Set<string>();
+    const keptTables = new Set<string>();
+    for (const [position, { id, zones, fixtures, tables, ...floor }] of plan.entries()) {
+      let floorId: string;
+      if (id && oldFloors.has(id)) {
+        await tx.update(schema.floors).set({ ...floor, position }).where(eq(schema.floors.id, id));
+        floorId = id;
       } else {
-        await tx.insert(schema.diningTables).values({ ...t, restaurantId: restaurant.id });
+        [{ id: floorId }] = await tx
+          .insert(schema.floors)
+          .values({ ...floor, position, restaurantId: restaurant.id })
+          .returning({ id: schema.floors.id });
+      }
+      keptFloors.add(floorId);
+
+      const savedZones = zones.length
+        ? await tx
+            .insert(schema.zones)
+            .values(zones.map((z) => ({ ...z, floorId, restaurantId: restaurant.id })))
+            .returning()
+        : [];
+      if (fixtures.length) {
+        await tx.insert(schema.fixtures).values(fixtures.map((f) => ({ ...f, floorId, restaurantId: restaurant.id })));
+      }
+      for (const { id: tableId, ...t } of tables) {
+        const row = { ...t, floorId, zoneId: zoneFor({ ...t, floorId }, savedZones)?.id ?? null };
+        if (tableId && oldTables.has(tableId)) {
+          await tx.update(schema.diningTables).set(row).where(eq(schema.diningTables.id, tableId));
+          keptTables.add(tableId);
+        } else {
+          await tx.insert(schema.diningTables).values({ ...row, restaurantId: restaurant.id });
+        }
       }
     }
-    const removed = [...existing].filter((id) => !keep.has(id));
-    if (removed.length) await tx.delete(schema.diningTables).where(inArray(schema.diningTables.id, removed));
+    const goneTables = [...oldTables].filter((id) => !keptTables.has(id));
+    if (goneTables.length) await tx.delete(schema.diningTables).where(inArray(schema.diningTables.id, goneTables));
+    const goneFloors = [...oldFloors].filter((id) => !keptFloors.has(id));
+    if (goneFloors.length) await tx.delete(schema.floors).where(inArray(schema.floors.id, goneFloors));
   });
   revalidatePath("/app", "layout");
+  revalidatePath("/p", "layout");
   return { ok: "Sala salvata." };
 }
 

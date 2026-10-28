@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getClosures, getRestaurantBySlug, getServiceHours } from "@/lib/restaurant";
+import { getClosures, getOnlineZones, getRestaurantBySlug, getServiceHours } from "@/lib/restaurant";
 import { addDays, nowIn, weekdayOf } from "@/lib/time";
 import { BookingFlow } from "./BookingFlow";
 import { PublicShell } from "./PublicShell";
@@ -27,7 +27,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   }
 
   // Which upcoming days have any service and aren't closed, so the date picker can grey out the rest.
-  const [hours, closures] = await Promise.all([getServiceHours(r.id), getClosures(r.id)]);
+  const [hours, closures, zones] = await Promise.all([getServiceHours(r.id), getClosures(r.id), getOnlineZones(r.id)]);
   const today = nowIn(r.timezone).date;
   const openWeekdays = new Set(hours.map((h) => h.weekday));
   const closed = new Set(closures.map((c) => c.date));
@@ -38,7 +38,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
 
   return (
     <PublicShell r={r} embed={embed}>
-      <BookingFlow slug={r.slug} embed={embed} days={days} maxPartySize={r.maxPartySize} phone={r.phone} restaurantName={r.name} />
+      <BookingFlow slug={r.slug} embed={embed} days={days} zones={zones.length > 1 ? zones : []} maxPartySize={r.maxPartySize} phone={r.phone} restaurantName={r.name} />
     </PublicShell>
   );
 }

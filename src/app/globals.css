@@ -196,17 +196,17 @@ textarea.input { padding: 10px 12px; min-height: 84px; resize: vertical; }
 .floor-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .floor-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 @media (max-width: 900px) { .floor { grid-template-columns: minmax(0, 1fr); } }
-/* On phones the plan keeps a readable size and scrolls sideways inside its frame. */
-.plan-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.plan-svg { display: block; width: 100%; min-width: 620px; height: auto; border: 2px solid var(--ink); background: var(--paper); user-select: none; -webkit-user-select: none; }
+/* The plan fits the width; zoom enlarges it. On phones it keeps a readable size and scrolls sideways inside its frame. */
+.plan-scroll { overflow: auto; -webkit-overflow-scrolling: touch; max-height: 80vh; border: 2px solid var(--ink); }
+.plan-svg { display: block; width: 100%; min-width: 620px; height: auto; background: var(--paper); user-select: none; -webkit-user-select: none; }
 .plan-floor { fill: url(#plan-grid); }
 .plan-grid-line { stroke: var(--grid); stroke-width: 1; }
 .tb { cursor: pointer; outline: none; }
 .editing .tb { touch-action: none; cursor: grab; }
 .editing .tb:active { cursor: grabbing; }
 .tb-body { fill: var(--paper); stroke: var(--ink); stroke-width: 2.5; transition: fill 0.25s, stroke 0.25s; }
-.tb-label { fill: var(--ink); font-size: 22px; font-weight: 700; }
-.tb-line { fill: var(--ink); font-size: 17px; }
+.tb-label { fill: var(--ink); font-size: 22px; font-weight: 700; pointer-events: none; }
+.tb-line { fill: var(--ink); font-size: 16px; pointer-events: none; }
 .tb.is-free:hover .tb-body, .editing .tb:hover .tb-body { fill: #dfe4dc; }
 .tb.is-seated .tb-body { fill: var(--ink); }
 .tb.is-seated text { fill: var(--paper); }
@@ -217,7 +217,6 @@ textarea.input { padding: 10px 12px; min-height: 84px; resize: vertical; }
 .editing .tb.is-selected .tb-body { stroke-dasharray: none; fill: rgba(27, 42, 107, 0.16); }
 .tb.is-fit .tb-body { stroke: var(--ok); stroke-width: 6; }
 .tb.is-dim { opacity: 0.35; }
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .scrub { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .scrub .clock { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; min-width: 3ch; }
 .scrub input[type="range"] { flex: 1 1 200px; min-width: 0; height: 40px; margin: 0; accent-color: var(--ink); }
@@ -245,3 +244,53 @@ textarea.input { padding: 10px 12px; min-height: 84px; resize: vertical; }
 .sk-block { height: 120px; }
 @keyframes sk-pulse { 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+
+/* Floors, areas and fixed elements */
+.floor-tabs { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 2px solid var(--ink); }
+.floor-tab { min-height: 42px; padding: 0 16px; border: 1.5px solid var(--ink); border-bottom: 0; margin-right: -1.5px; background: var(--paper); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.floor-tab[aria-selected="true"] { background: var(--ink); color: var(--ground); }
+.floor-tab-add { background: transparent; border-style: dashed; font-weight: 500; }
+.floor-tab-count { font-weight: 400; }
+.palette { display: flex; flex-direction: column; gap: 6px; }
+.palette-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.palette-title { min-width: 56px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.plan-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.plan-tools-gap { flex: 1; }
+.grid-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-fields .input { min-height: 42px; }
+
+.plan-hatch-line { stroke: rgba(27, 42, 107, 0.3); stroke-width: 2; }
+.zone-body { fill: rgba(27, 42, 107, 0.035); stroke: var(--ink); stroke-width: 2; stroke-dasharray: 14 8; pointer-events: none; }
+.zone-body.is-offline { fill: rgba(27, 42, 107, 0.08); }
+.zone-tab rect { fill: var(--ink); }
+.zone-tab text { fill: var(--ground); font-size: 20px; font-weight: 700; pointer-events: none; }
+.zone-tab.is-offline rect { fill: #59628f; }
+.zone-tab .zone-grab { fill: transparent; cursor: grab; outline: none; }
+.editing .zone-grab { touch-action: none; }
+
+.fx rect, .fx ellipse { stroke: var(--ink); stroke-width: 2; fill: var(--paper); }
+.fx-label { fill: var(--ink); font-weight: 600; pointer-events: none; }
+.fx-wall rect, .fx-column rect { fill: var(--ink); stroke: none; }
+.fx-window rect { fill: var(--paper); }
+.fx-window path { stroke: var(--ink); stroke-width: 1.5; fill: none; }
+.fx-door rect { fill: var(--paper); stroke: none; }
+.fx-swing { fill: none; stroke: var(--ink); stroke-width: 2; stroke-dasharray: 6 5; }
+.fx-entrance .fx-swing { stroke-width: 3; stroke-dasharray: none; }
+.fx-kitchen rect { fill: url(#plan-hatch); stroke-width: 2.5; }
+.fx-kitchen .fx-label, .fx-toilets .fx-label { paint-order: stroke; stroke: var(--paper); stroke-width: 6px; }
+.fx-bar rect { fill: rgba(27, 42, 107, 0.14); stroke-width: 3; }
+.fx-cash rect { fill: rgba(27, 42, 107, 0.22); stroke-width: 2.5; }
+.fx-station rect { fill: rgba(27, 42, 107, 0.08); }
+.fx-toilets rect { stroke-dasharray: 10 6; }
+.fx-stairs rect { fill: var(--paper); stroke-width: 2.5; }
+.fx-steps { stroke: var(--ink); stroke-width: 1.5; fill: none; }
+.fx-stairs .fx-label { paint-order: stroke; stroke: var(--paper); stroke-width: 6px; }
+.fx-plant ellipse { fill: rgba(36, 97, 58, 0.18); stroke: var(--ok); }
+.fx-other rect { stroke-dasharray: 6 5; }
+.fx-hit { fill: transparent; stroke: none; }
+.fx-item { cursor: grab; outline: none; }
+.editing .fx-item { touch-action: none; }
+
+.tb.is-offline .tb-body { stroke-dasharray: 3 4; }
+.sel-frame rect:first-child { fill: none; stroke: var(--ok); stroke-width: 3; stroke-dasharray: 10 6; pointer-events: none; }
+.sel-handle { fill: var(--ok); stroke: var(--paper); stroke-width: 3; cursor: nwse-resize; touch-action: none; }

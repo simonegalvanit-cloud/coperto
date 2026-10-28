@@ -15,6 +15,7 @@ export function BookingFlow({
   slug,
   embed,
   days,
+  zones,
   maxPartySize,
   phone,
   restaurantName,
@@ -22,12 +23,15 @@ export function BookingFlow({
   slug: string;
   embed: boolean;
   days: Day[];
+  /** Areas the guest can choose between; empty when there's nothing to choose. */
+  zones: { id: string; name: string }[];
   maxPartySize: number;
   phone: string;
   restaurantName: string;
 }) {
   const [party, setParty] = useState(Math.min(2, maxPartySize));
   const [date, setDate] = useState(days.find((d) => d.open)?.date ?? days[0].date);
+  const [zone, setZone] = useState("");
   const [slots, setSlots] = useState<string[] | null>(null);
   const [time, setTime] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
@@ -49,14 +53,14 @@ export function BookingFlow({
   useEffect(() => {
     if (!isOpen) return;
     const ctrl = new AbortController();
-    fetch(`/api/availability?slug=${encodeURIComponent(slug)}&date=${date}&party=${party}`, { signal: ctrl.signal })
+    fetch(`/api/availability?slug=${encodeURIComponent(slug)}&date=${date}&party=${party}${zone ? `&zone=${zone}` : ""}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((data: { slots?: string[] }) => setSlots(data.slots ?? []))
       .catch((err) => {
         if (err.name !== "AbortError") setSlots([]);
       });
     return () => ctrl.abort();
-  }, [slug, date, party, isOpen, reload]);
+  }, [slug, date, party, zone, isOpen, reload]);
 
   useEffect(() => {
     if (time) detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -76,7 +80,10 @@ export function BookingFlow({
         <div className="summary" ref={detailsRef}>
           <div>
             <strong>{capitalize(longFmt.format(asDate(date)))}, {time}</strong>
-            <div>{people(party)}</div>
+            <div>
+              {people(party)}
+              {zone && `, ${zones.find((z) => z.id === zone)?.name}`}
+            </div>
           </div>
           <button type="button" className="btn btn-small" onClick={() => setTime(null)}>Cambia</button>
         </div>
@@ -91,6 +98,7 @@ export function BookingFlow({
           <input type="hidden" name="date" value={date} />
           <input type="hidden" name="time" value={time} />
           <input type="hidden" name="partySize" value={party} />
+          <input type="hidden" name="zoneId" value={zone} />
           <div className="honeypot" aria-hidden="true">
             <label>Sito web <input name="website" tabIndex={-1} autoComplete="off" /></label>
           </div>
@@ -157,6 +165,22 @@ export function BookingFlow({
         )}
       </div>
 
+      {zones.length > 0 && (
+        <div>
+          <p className="step-title">Dove?</p>
+          <div className="chips">
+            <button type="button" className="chip" aria-pressed={zone === ""} onClick={() => pick(() => setZone(""))}>
+              Indifferente
+            </button>
+            {zones.map((z) => (
+              <button key={z.id} type="button" className="chip" aria-pressed={zone === z.id} onClick={() => pick(() => setZone(z.id))}>
+                {z.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <p className="step-title">Quando?</p>
         <div className="chips">
@@ -194,7 +218,7 @@ export function BookingFlow({
           <p className="muted" aria-live="polite">Cerco i tavoli liberi…</p>
         ) : slots.length === 0 ? (
           <p className="panel">
-            Nessun tavolo libero per {people(party)} in questo giorno. Prova un altro giorno
+            Nessun tavolo libero per {people(party)} in questo giorno{zone ? " in quest’area" : ""}. Prova un altro giorno{zone ? " o un’altra area" : ""}
             {phone ? <> o chiama al <a href={`tel:${phone.replace(/\s/g, "")}`}>{phone}</a></> : ""}.
           </p>
         ) : (

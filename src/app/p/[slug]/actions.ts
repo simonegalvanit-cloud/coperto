@@ -19,6 +19,7 @@ const bookingSchema = z.object({
   guestPhone: z.string().trim().min(6, "Scrivi un numero di telefono, serve se il ristorante deve contattarti.").max(40),
   guestEmail: z.email("Controlla l’email: ti mandiamo lì la conferma.").trim().toLowerCase(),
   notes: z.string().trim().max(500, "Le note possono avere al massimo 500 caratteri."),
+  zoneId: z.union([z.literal(""), z.uuid()]).optional(),
 });
 
 export async function createBooking(slug: string, embed: boolean, _: BookingResult, data: FormData): Promise<BookingResult> {
@@ -29,7 +30,8 @@ export async function createBooking(slug: string, embed: boolean, _: BookingResu
 
   const restaurant = await getRestaurantBySlug(slug);
   if (!restaurant) return { error: "Ristorante non trovato." };
-  const result = await createOnlineReservation(restaurant, parsed.data);
+  const { zoneId, ...details } = parsed.data;
+  const result = await createOnlineReservation(restaurant, details, zoneId || null);
   if (!result.ok) {
     return { unavailable: true, error: "Quell’orario è appena stato preso. Scegline un altro." };
   }
