@@ -6,7 +6,8 @@ import { requireAccount } from "@/lib/auth";
 import { tableOptions } from "@/lib/plan";
 import { ACTIVE_STATUSES } from "@/lib/restaurant";
 import { addDays, capitalize, formatDate, isDate, nowIn, toMinutes, weekdayOf } from "@/lib/time";
-import { AutoRefresh } from "@/components/AutoRefresh";
+import { LiveSync } from "@/components/LiveSync";
+import { changeStamp } from "@/lib/changes";
 import { BookingRow } from "./BookingRow";
 
 export default async function DayPage({ searchParams }: PageProps<"/app">) {
@@ -16,7 +17,7 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
   const date = typeof param === "string" && isDate(param) ? param : today;
 
   const db = await getDb();
-  const [bookings, services, [closure], tables] = await Promise.all([
+  const [bookings, services, [closure], tables, stamp] = await Promise.all([
     db
       .select()
       .from(schema.reservations)
@@ -32,8 +33,11 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
       .from(schema.closures)
       .where(and(eq(schema.closures.restaurantId, restaurant.id), eq(schema.closures.date, date))),
     tableOptions(restaurant.id),
+    changeStamp(restaurant.id),
   ]);
-  const tableLabel = new Map(tables.map((t) => [t.id, t.zone ? `${t.label} · ${t.zone}` : t.label]));
+  const placeLabel = new Map(
+    tables.map((t) => [t.value, `${t.combinationId ? "Tavoli" : "Tavolo"} ${t.label}${t.zone ? ` · ${t.zone}` : ""}`]),
+  );
 
   const active = bookings.filter((b) => (ACTIVE_STATUSES as readonly string[]).includes(b.status) || b.status === "completed");
   const covers = (list: Reservation[]) => list.reduce((n, b) => n + b.partySize, 0);
@@ -55,15 +59,15 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
 
   return (
     <>
-      <AutoRefresh />
+      <LiveSync stamp={stamp} />
       <div className="daybar">
         <h1>
           {label ? `${label}, ${formatDate(date)}` : capitalize(formatDate(date))}
         </h1>
         <form className="daynav" action="/app">
-          <Link className="btn btn-small" href={`/app?data=${addDays(date, -1)}`} aria-label="Giorno precedente">‹</Link>
+          <Link className="btn btn-small" href={`/app?data=${addDays(date, -1)}`} prefetch aria-label="Giorno precedente">‹</Link>
           {date !== today && <Link className="btn btn-small" href="/app">Oggi</Link>}
-          <Link className="btn btn-small" href={`/app?data=${addDays(date, 1)}`} aria-label="Giorno successivo">›</Link>
+          <Link className="btn btn-small" href={`/app?data=${addDays(date, 1)}`} prefetch aria-label="Giorno successivo">›</Link>
           <input className="input btn-small" type="date" name="data" defaultValue={date} aria-label="Vai alla data" />
           <button className="btn btn-small" type="submit">Vai</button>
         </form>
@@ -113,7 +117,7 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
                       status: b.status,
                       source: b.source,
                     }}
-                    table={b.tableId ? tableLabel.get(b.tableId) : undefined}
+                    table={b.tableId ? placeLabel.get(`t:${b.tableId}`) : b.combinationId ? placeLabel.get(`c:${b.combinationId}`) : undefined}
                   />
                 ))}
               </ul>

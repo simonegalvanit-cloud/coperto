@@ -3,6 +3,11 @@ import type { FixtureKind, Shape } from "@/lib/floor";
 
 type Box = { x: number; y: number; w: number; h: number };
 
+/** SVG rotation around a box's centre, or nothing for 0°. */
+export function rotateAbout(b: Box & { rotation?: number }) {
+  return b.rotation ? `rotate(${b.rotation} ${b.x + b.w / 2} ${b.y + b.h / 2})` : undefined;
+}
+
 /** Patterns used by the plan: the 50 cm floor grid and the hatching for kitchens. */
 export function PlanDefs() {
   return (
@@ -64,7 +69,11 @@ function Steps({ b }: { b: Box }) {
   return <path className="fx-steps" d={lines.join("")} />;
 }
 
-export function FixtureShape({ f }: { f: Box & { kind: FixtureKind; label: string } }) {
+export function FixtureShape({ f }: { f: Box & { kind: FixtureKind; label: string; rotation?: number } }) {
+  return <g transform={rotateAbout(f)}>{fixtureBody(f)}</g>;
+}
+
+function fixtureBody(f: Box & { kind: FixtureKind; label: string }) {
   const r = <rect x={f.x} y={f.y} width={f.w} height={f.h} />;
   switch (f.kind) {
     case "wall":
@@ -116,23 +125,23 @@ export function FixtureShape({ f }: { f: Box & { kind: FixtureKind; label: strin
   }
 }
 
-type ZoneLike = Box & { name: string; bookableOnline: boolean };
+type ZoneLike = Box & { name: string; bookableOnline: boolean; closedToday?: boolean };
 
-const zoneLabel = (z: ZoneLike) => `${z.name}${z.bookableOnline ? "" : " · non online"}`;
+const zoneLabel = (z: ZoneLike) => `${z.name}${!z.bookableOnline ? " · non online" : z.closedToday ? " · chiusa oggi" : ""}`;
 
 /** Width of a zone's name tab, which is also its grab handle in the editor. */
 export const zoneTabWidth = (z: ZoneLike) => Math.min(z.w, zoneLabel(z).length * 15 + 24);
 
 /** A room or area: a light field. Drawn first, under everything. */
 export function ZoneBody({ z }: { z: ZoneLike }) {
-  return <rect className={`zone-body${z.bookableOnline ? "" : " is-offline"}`} x={z.x} y={z.y} width={z.w} height={z.h} />;
+  return <rect className={`zone-body${z.bookableOnline && !z.closedToday ? "" : " is-offline"}`} x={z.x} y={z.y} width={z.w} height={z.h} />;
 }
 
 /** The zone's name in a tab at its top-left corner. Drawn last, so walls and fixtures never hide it. */
 export function ZoneTab({ z, children }: { z: ZoneLike; children?: ReactNode }) {
   const w = zoneTabWidth(z);
   return (
-    <g className={`zone-tab${z.bookableOnline ? "" : " is-offline"}`}>
+    <g className={`zone-tab${z.bookableOnline && !z.closedToday ? "" : " is-offline"}`}>
       <rect x={z.x} y={z.y} width={w} height={36} />
       <text x={z.x + 12} y={z.y + 18} dominantBaseline="central">
         {fit(zoneLabel(z), w, 14)}
@@ -142,8 +151,8 @@ export function ZoneTab({ z, children }: { z: ZoneLike; children?: ReactNode }) 
   );
 }
 
-/** One table, at its real size, with up to three short lines of text inside. */
-export function TableShape({ t, lines }: { t: Box & { shape: Shape }; lines: ReactNode[] }) {
+/** One table, at its real size and angle, with up to three short lines of text inside (kept upright). */
+export function TableShape({ t, lines }: { t: Box & { shape: Shape; rotation?: number }; lines: ReactNode[] }) {
   const cx = t.x + t.w / 2;
   const cy = t.y + t.h / 2;
   const lineH = 20;
@@ -151,9 +160,9 @@ export function TableShape({ t, lines }: { t: Box & { shape: Shape }; lines: Rea
   return (
     <>
       {t.shape === "round" ? (
-        <ellipse className="tb-body" cx={cx} cy={cy} rx={t.w / 2} ry={t.h / 2} />
+        <ellipse className="tb-body" cx={cx} cy={cy} rx={t.w / 2} ry={t.h / 2} transform={rotateAbout(t)} />
       ) : (
-        <rect className="tb-body" x={t.x} y={t.y} width={t.w} height={t.h} rx={3} />
+        <rect className="tb-body" x={t.x} y={t.y} width={t.w} height={t.h} rx={3} transform={rotateAbout(t)} />
       )}
       {lines.map((line, i) => (
         <text key={i} className={i === 0 ? "tb-label" : "tb-line"} x={cx} y={top + i * lineH} dominantBaseline="central" textAnchor="middle">
@@ -161,5 +170,25 @@ export function TableShape({ t, lines }: { t: Box & { shape: Shape }; lines: Rea
         </text>
       ))}
     </>
+  );
+}
+
+/** A dashed outline around a group of joined tables, with its name. */
+export function ComboOutline({ tables, label }: { tables: Box[]; label?: string }) {
+  if (!tables.length) return null;
+  const pad = 14;
+  const x = Math.min(...tables.map((t) => t.x)) - pad;
+  const y = Math.min(...tables.map((t) => t.y)) - pad;
+  const w = Math.max(...tables.map((t) => t.x + t.w)) + pad - x;
+  const h = Math.max(...tables.map((t) => t.y + t.h)) + pad - y;
+  return (
+    <g className="combo-outline">
+      <rect x={x} y={y} width={w} height={h} rx={10} />
+      {label && (
+        <text x={x + 8} y={y - 6}>
+          {label}
+        </text>
+      )}
+    </g>
   );
 }

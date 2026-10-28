@@ -23,8 +23,8 @@ export function BookingFlow({
   slug: string;
   embed: boolean;
   days: Day[];
-  /** Areas the guest can choose between; empty when there's nothing to choose. */
-  zones: { id: string; name: string }[];
+  /** Names of the areas the guest can choose between; empty when there's nothing to choose. */
+  zones: string[];
   maxPartySize: number;
   phone: string;
   restaurantName: string;
@@ -53,7 +53,7 @@ export function BookingFlow({
   useEffect(() => {
     if (!isOpen) return;
     const ctrl = new AbortController();
-    fetch(`/api/availability?slug=${encodeURIComponent(slug)}&date=${date}&party=${party}${zone ? `&zone=${zone}` : ""}`, { signal: ctrl.signal })
+    fetch(`/api/availability?slug=${encodeURIComponent(slug)}&date=${date}&party=${party}${zone ? `&area=${encodeURIComponent(zone)}` : ""}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((data: { slots?: string[] }) => setSlots(data.slots ?? []))
       .catch((err) => {
@@ -82,7 +82,7 @@ export function BookingFlow({
             <strong>{capitalize(longFmt.format(asDate(date)))}, {time}</strong>
             <div>
               {people(party)}
-              {zone && `, ${zones.find((z) => z.id === zone)?.name}`}
+              {zone && `, ${zone}`}
             </div>
           </div>
           <button type="button" className="btn btn-small" onClick={() => setTime(null)}>Cambia</button>
@@ -98,7 +98,7 @@ export function BookingFlow({
           <input type="hidden" name="date" value={date} />
           <input type="hidden" name="time" value={time} />
           <input type="hidden" name="partySize" value={party} />
-          <input type="hidden" name="zoneId" value={zone} />
+          <input type="hidden" name="area" value={zone} />
           <div className="honeypot" aria-hidden="true">
             <label>Sito web <input name="website" tabIndex={-1} autoComplete="off" /></label>
           </div>
@@ -172,9 +172,9 @@ export function BookingFlow({
             <button type="button" className="chip" aria-pressed={zone === ""} onClick={() => pick(() => setZone(""))}>
               Indifferente
             </button>
-            {zones.map((z) => (
-              <button key={z.id} type="button" className="chip" aria-pressed={zone === z.id} onClick={() => pick(() => setZone(z.id))}>
-                {z.name}
+            {zones.map((name) => (
+              <button key={name} type="button" className="chip" aria-pressed={zone === name} onClick={() => pick(() => setZone(name))}>
+                {name}
               </button>
             ))}
           </div>

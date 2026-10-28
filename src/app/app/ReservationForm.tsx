@@ -46,14 +46,18 @@ export function ReservationForm({
       {tables.length > 0 && (
         <label className="field">
           Tavolo <span className="hint">Facoltativo, puoi assegnarlo anche dalla sala</span>
-          <select className="input" name="tableId" defaultValue={initial?.tableId ?? ""}>
+          <select
+            className="input"
+            name="place"
+            defaultValue={initial?.tableId ? `t:${initial.tableId}` : initial?.combinationId ? `c:${initial.combinationId}` : ""}
+          >
             <option value="">Nessun tavolo</option>
             {[...new Set(tables.map((t) => t.group))].map((group) => (
               <optgroup key={group} label={group}>
                 {tables
                   .filter((t) => t.group === group)
                   .map((t) => (
-                    <option key={t.id} value={t.id}>
+                    <option key={t.value} value={t.value}>
                       {t.label} ({t.seats} posti)
                     </option>
                   ))}

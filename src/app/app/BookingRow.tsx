@@ -53,7 +53,7 @@ export function BookingRow({ b, table }: { b: RowBooking; table?: string }) {
           <span className="party" title={`${b.partySize} persone`}>{b.partySize}</span>
         </div>
         <div className="meta muted">
-          {table && <span className="table-tag">Tavolo {table}</span>}
+          {table && <span className="table-tag">{table}</span>}
           {b.guestPhone && <a href={`tel:${b.guestPhone.replace(/\s/g, "")}`}>{b.guestPhone}</a>}
           <span>{SOURCE[b.source]}</span>
           {status === "cancelled" && <span className="tag tag-alert">Cancellata</span>}
