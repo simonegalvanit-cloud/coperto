@@ -111,7 +111,7 @@ export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]"
             <input type="hidden" name="id" value={guest.id} />
             <p className="small muted">Se l’ospite chiede di essere dimenticato (GDPR), elimina la scheda: le sue prenotazioni restano solo come numeri, senza nome né contatti.</p>
             <div>
-              <ConfirmButton className="btn btn-small btn-danger" question={`Eliminare ${guest.name} e i suoi dati personali? Non si può annullare.`}>
+              <ConfirmButton className="btn btn-small btn-danger" question={`Eliminare ${guest.name} e i suoi dati personali? Non si può annullare.`} confirmLabel="Elimina">
                 Elimina ospite e dati
               </ConfirmButton>
             </div>

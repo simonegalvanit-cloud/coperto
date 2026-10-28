@@ -31,11 +31,14 @@ export function randomToken(): string {
 
 const sessionId = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export async function startSession(userId: string) {
-  const db = await getDb();
+/** A new session's database row and the cookie token that goes with it (the row stores only the token's hash). */
+export function newSession(userId: string) {
   const token = randomToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
-  await db.insert(schema.sessions).values({ id: sessionId(token), userId, expiresAt });
+  return { token, row: { id: sessionId(token), userId, expiresAt } };
+}
+
+export async function setSessionCookie(token: string, expiresAt: Date) {
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -43,6 +46,13 @@ export async function startSession(userId: string) {
     path: "/",
     expires: expiresAt,
   });
+}
+
+export async function startSession(userId: string) {
+  const db = await getDb();
+  const { token, row } = newSession(userId);
+  await db.insert(schema.sessions).values(row);
+  await setSessionCookie(token, row.expiresAt);
 }
 
 export async function endSession() {

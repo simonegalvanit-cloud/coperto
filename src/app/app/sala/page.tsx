@@ -3,6 +3,7 @@ import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { LiveSync } from "@/components/LiveSync";
+import { DayJump } from "@/components/DayJump";
 import { changeStamp } from "@/lib/changes";
 import { requireAccount } from "@/lib/auth";
 import { closedAreas, loadPlan } from "@/lib/plan";
@@ -86,13 +87,12 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
       <LiveSync stamp={stamp} />
       <div className="daybar">
         <h1>Sala · {label ? `${label}, ${formatDate(date)}` : capitalize(formatDate(date))}</h1>
-        <form className="daynav" action="/app/sala">
+        <div className="daynav">
           <Link className="btn btn-small" href={`/app/sala?data=${addDays(date, -1)}`} prefetch aria-label="Giorno precedente">‹</Link>
           {!isToday && <Link className="btn btn-small" href="/app/sala">Oggi</Link>}
           <Link className="btn btn-small" href={`/app/sala?data=${addDays(date, 1)}`} prefetch aria-label="Giorno successivo">›</Link>
-          <input className="input btn-small" type="date" name="data" defaultValue={date} aria-label="Vai alla data" />
-          <button className="btn btn-small" type="submit">Vai</button>
-        </form>
+          <DayJump basePath="/app/sala" date={date} />
+        </div>
       </div>
       <FloorLive
         key={date}

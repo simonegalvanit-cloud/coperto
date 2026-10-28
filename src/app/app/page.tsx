@@ -3,12 +3,14 @@ import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Reservation } from "@/db/schema";
 import { requireAccount } from "@/lib/auth";
-import { tableOptions } from "@/lib/plan";
+import { loadPlan, optionsFromPlan } from "@/lib/plan";
+import { tablesOf } from "@/lib/floor";
 import { guestInfoFor, linkUnlinked } from "@/lib/guests";
 import { getWaitlist } from "@/lib/waitlist";
 import { ACTIVE_STATUSES } from "@/lib/restaurant";
 import { addDays, capitalize, formatDate, isDate, nowIn, toMinutes, weekdayOf } from "@/lib/time";
 import { LiveSync } from "@/components/LiveSync";
+import { DayJump } from "@/components/DayJump";
 import { changeStamp } from "@/lib/changes";
 import { BookingRow } from "./BookingRow";
 
@@ -20,7 +22,7 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
 
   const db = await getDb();
   await linkUnlinked(restaurant.id);
-  const [bookings, services, [closure], tables, stamp, waitlist] = await Promise.all([
+  const [bookings, services, [closure], plan, stamp, waitlist] = await Promise.all([
     db
       .select()
       .from(schema.reservations)
@@ -35,28 +37,29 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
       .select()
       .from(schema.closures)
       .where(and(eq(schema.closures.restaurantId, restaurant.id), eq(schema.closures.date, date))),
-    tableOptions(restaurant.id),
+    loadPlan(restaurant.id),
     changeStamp(restaurant.id),
     getWaitlist(restaurant.id, date),
   ]);
   const waiting = waitlist.filter((w) => w.status === "waiting" || w.status === "notified");
   const guestInfo = await guestInfoFor(restaurant.id, bookings);
+  const tables = optionsFromPlan(plan);
   const placeLabel = new Map(
     tables.map((t) => [t.value, `${t.combinationId ? "Tavoli" : "Tavolo"} ${t.label}${t.zone ? ` · ${t.zone}` : ""}`]),
   );
 
   const active = bookings.filter((b) => (ACTIVE_STATUSES as readonly string[]).includes(b.status) || b.status === "completed");
   const covers = (list: Reservation[]) => list.reduce((n, b) => n + b.partySize, 0);
+  // Distinct tables in use today: joined tables count each of their tables once.
+  const tablesInUse = new Set(active.flatMap((b) => tablesOf(b, plan.combos))).size;
 
-  // Each booking goes under the service it falls in; anything outside the hours goes under "Fuori orario".
+  // Each booking goes under the service whose hours it falls in (from an hour before opening to half an hour
+  // after the last arrival); anything else, like 23:30 after a 22:00 close, goes under "Fuori orario".
   const groups = services.map((s) => ({ name: s.name, hours: `${s.startTime}–${s.endTime}`, items: [] as Reservation[] }));
   const other = { name: "Fuori orario", hours: "", items: [] as Reservation[] };
   for (const b of bookings) {
     const t = toMinutes(b.time);
-    const idx = services.findIndex((s, i) => {
-      const nextStart = services[i + 1] ? toMinutes(services[i + 1].startTime) : Infinity;
-      return t >= toMinutes(s.startTime) - 60 && t < nextStart - 60;
-    });
+    const idx = services.findIndex((s) => t >= toMinutes(s.startTime) - 60 && t <= toMinutes(s.endTime) + 30);
     (idx >= 0 ? groups[idx] : other).items.push(b);
   }
   if (other.items.length) groups.push(other);
@@ -70,13 +73,12 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
         <h1>
           {label ? `${label}, ${formatDate(date)}` : capitalize(formatDate(date))}
         </h1>
-        <form className="daynav" action="/app">
+        <div className="daynav">
           <Link className="btn btn-small" href={`/app?data=${addDays(date, -1)}`} prefetch aria-label="Giorno precedente">‹</Link>
           {date !== today && <Link className="btn btn-small" href="/app">Oggi</Link>}
           <Link className="btn btn-small" href={`/app?data=${addDays(date, 1)}`} prefetch aria-label="Giorno successivo">›</Link>
-          <input className="input btn-small" type="date" name="data" defaultValue={date} aria-label="Vai alla data" />
-          <button className="btn btn-small" type="submit">Vai</button>
-        </form>
+          <DayJump basePath="/app" date={date} />
+        </div>
       </div>
 
       {closure && (
@@ -101,7 +103,10 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
 
       <div className="totals">
         <div><strong>{covers(active)}</strong><span>coperti</span></div>
-        <div><strong>{active.length}</strong><span>tavoli prenotati</span></div>
+        <div><strong>{active.length}</strong><span>prenotazioni</span></div>
+        {plan.tables.length > 0 && (
+          <div><strong>{tablesInUse}</strong><span>tavoli assegnati</span></div>
+        )}
         <div><strong>{covers(bookings.filter((b) => b.status === "seated"))}</strong><span>a tavola ora</span></div>
         <div><strong>{bookings.filter((b) => b.status === "no_show").length}</strong><span>no-show</span></div>
       </div>

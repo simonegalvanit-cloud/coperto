@@ -19,7 +19,7 @@ import {
 } from "@/lib/floor";
 import { fromMinutes, toMinutes } from "@/lib/time";
 import type { GuestInfo } from "@/lib/guests";
-import { ComboOutline, FixtureShape, fit, PlanDefs, TableShape, ZoneBody, ZoneTab } from "@/components/PlanShapes";
+import { ComboOutline, FixtureShape, PlanDefs, TableShape, ZoneBody, ZoneTab } from "@/components/PlanShapes";
 import {
   addToWaitlist,
   assignTable,
@@ -307,8 +307,8 @@ export function FloorLive({
               ))}
             {tables.filter((tb) => tb.floorId === floor.id).map((tb) => {
               const s = states.get(tb.id)!;
-              const who = s.booking ? fit(s.booking.guestName, tb.w) : "";
-              const lines = [fit(tb.label, tb.w, 13)];
+              const who = s.booking ? s.booking.guestName : "";
+              const lines = [tb.label];
               if (who) lines.push(who);
               if (s.state === "seated" && s.next) lines.push(`→ ${s.next.time}`);
               else if (s.booking && s.state !== "seated") lines.push(s.booking.time);

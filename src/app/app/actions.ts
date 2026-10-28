@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { randomToken, requireAccount } from "@/lib/auth";
@@ -11,7 +11,7 @@ import { after } from "next/server";
 import { checkSpot } from "@/lib/spots";
 import { notifyWaitlist } from "@/lib/waitlist";
 import { guestFor } from "@/lib/guests";
-import { isDate, isTime } from "@/lib/time";
+import { capitalize, formatDate, isDate, isTime, toMinutes, weekdayOf } from "@/lib/time";
 import type { ActionResult } from "@/components/ActionForm";
 
 const STATUSES = ["confirmed", "seated", "completed", "cancelled", "no_show"] as const;
@@ -50,15 +50,42 @@ const reservationSchema = z.object({
   // "t:<id>" for a table, "c:<id>" for joined tables, "" for none.
   place: z.union([z.literal(""), z.string().regex(/^[tc]:[0-9a-f-]{36}$/)]).optional(),
   sendEmail: z.literal("on").optional(),
+  outsideHours: z.literal("on").optional(),
 });
 
-/** Bookings entered by staff: no capacity check, the staff decides. */
+/** Why a time can't be booked: a closure day, or outside the day's opening hours. Null when it's fine. */
+async function outsideOpening(restaurantId: string, date: string, time: string): Promise<string | null> {
+  const db = await getDb();
+  const [services, [closure]] = await Promise.all([
+    db
+      .select()
+      .from(schema.serviceHours)
+      .where(and(eq(schema.serviceHours.restaurantId, restaurantId), eq(schema.serviceHours.weekday, weekdayOf(date))))
+      .orderBy(asc(schema.serviceHours.startTime)),
+    db
+      .select()
+      .from(schema.closures)
+      .where(and(eq(schema.closures.restaurantId, restaurantId), eq(schema.closures.date, date))),
+  ]);
+  if (closure) return `${capitalize(formatDate(date))} il ristorante è chiuso${closure.note ? ` (${closure.note})` : ""}.`;
+  if (!services.length) return `${capitalize(formatDate(date))} il ristorante è chiuso.`;
+  const t = toMinutes(time);
+  if (services.some((s) => t >= toMinutes(s.startTime) && t <= toMinutes(s.endTime))) return null;
+  const hours = services.map((s) => `${s.name} ${s.startTime}–${s.endTime}`).join(", ");
+  return `Le ${time} sono fuori orario (${hours}).`;
+}
+
+/** Bookings entered by staff: no capacity check, the staff decides; outside opening hours only if ticked. */
 export async function saveReservation(_: ActionResult, data: FormData): Promise<ActionResult> {
   const { restaurant } = await requireAccount();
   const raw = Object.fromEntries(data);
   const parsed = reservationSchema.safeParse({ ...raw, id: raw.id || undefined, guestEmail: String(raw.guestEmail ?? "").trim() });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { id, sendEmail, place, ...rest } = parsed.data;
+  const { id, sendEmail, place, outsideHours, ...rest } = parsed.data;
+  if (!outsideHours) {
+    const problem = await outsideOpening(restaurant.id, rest.date, rest.time);
+    if (problem) return { error: `${problem} Se vuoi inserirla comunque, spunta «Accetta anche fuori orario».` };
+  }
   const db = await getDb();
   const fields = {
     ...rest,

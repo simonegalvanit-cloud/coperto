@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState, useTransition, type KeyboardEvent, type PointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { FIXTURES, FLOOR_NAMES, sizeFor, zoneFor, type FixtureKind, type Shape } from "@/lib/floor";
-import { ComboOutline, FixtureShape, fit, PlanDefs, rotateAbout, TableShape, ZoneBody, ZoneTab, zoneTabWidth } from "@/components/PlanShapes";
+import { ComboOutline, FixtureShape, PlanDefs, rotateAbout, TableShape, ZoneBody, ZoneTab, zoneTabWidth } from "@/components/PlanShapes";
 import { saveFloorPlan, type FloorPlanInput } from "../actions";
+import { useConfirm } from "@/components/ConfirmButton";
 
 // Everything is in centimetres. `key` identifies items in the editor; `id` is their database id once saved.
 type Box = { x: number; y: number; w: number; h: number };
@@ -171,32 +172,42 @@ function comboDefaults(tables: ETable[], keys: string[]) {
   return { maxCovers: Math.max(1, max), minCovers: Math.max(1, Math.min(max, biggest + 1)) };
 }
 
-const blankFloor = (level = 0, width = 1400, height = 900): EFloor => ({
-  key: newKey(),
-  name: FLOOR_NAMES[level] ?? `Piano ${level}`,
-  level,
-  width,
-  height,
-  zones: [],
-  fixtures: [],
-  tables: [],
-  combos: [],
-});
+/** A new floor starts as one area covering it, so its tables belong to a room from the first one. */
+const blankFloor = (level = 0, width = 1400, height = 900): EFloor => {
+  const name = FLOOR_NAMES[level] ?? `Piano ${level}`;
+  return {
+    key: newKey(),
+    name,
+    level,
+    width,
+    height,
+    zones: [{ key: newKey(), name: level === 0 ? "Sala" : `Sala ${name.toLowerCase()}`, bookableOnline: true, x: 0, y: 0, w: width, h: height }],
+    fixtures: [],
+    tables: [],
+    combos: [],
+  };
+};
 
 function nextLabel(plan: EFloor[]) {
   const nums = plan.flatMap((f) => f.tables).map((t) => Number(t.label.replace(/\D/g, ""))).filter(Number.isFinite);
   return `T${Math.max(0, ...nums) + 1}`;
 }
 
-/** First spot, scanning the floor row by row, where a box of this size doesn't touch a table or fixture. */
-function freeSpot(f: EFloor, w: number, h: number, gap = 30) {
+/**
+ * The free spot nearest to a point (the middle of what's on screen) where a box of this size doesn't touch a
+ * table or fixture, so new items appear where the person is looking, not in a corner.
+ */
+function freeSpotNear(f: EFloor, w: number, h: number, near: { x: number; y: number }, gap = 30) {
   const taken = [...f.tables, ...f.fixtures];
-  for (let y = 60; y + h <= f.height - 10; y += 25) {
-    for (let x = 60; x + w <= f.width - 10; x += 25) {
-      if (taken.every((t) => x + w + gap <= t.x || t.x + t.w + gap <= x || y + h + gap <= t.y || t.y + t.h + gap <= y)) return { x, y };
-    }
+  const want = { x: near.x - w / 2, y: near.y - h / 2 };
+  const spots: { x: number; y: number; d: number }[] = [];
+  for (let y = 0; y + h <= f.height; y += 25) {
+    for (let x = 0; x + w <= f.width; x += 25) spots.push({ x, y, d: (x - want.x) ** 2 + (y - want.y) ** 2 });
   }
-  return { x: snap(Math.max(0, (f.width - w) / 2)), y: snap(Math.max(0, (f.height - h) / 2)) };
+  spots.sort((a, b) => a.d - b.d);
+  const free = spots.find(({ x, y }) => taken.every((t) => x + w + gap <= t.x || t.x + t.w + gap <= x || y + h + gap <= t.y || t.y + t.h + gap <= y));
+  const at = free ?? spots[0] ?? { x: 0, y: 0 };
+  return { x: snap(at.x), y: snap(at.y) };
 }
 
 /** A two-floor trattoria to start from: dining room, terrace, kitchen, bar, till, stairs to a private room. */
@@ -292,6 +303,7 @@ function exampleRestaurant(): EFloor[] {
 export function FloorEditor({ initial }: { initial: EditorInput }) {
   const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [plan, setPlan] = useState<EFloor[]>(() => {
     const loaded = fromInput(initial);
     return loaded.length ? loaded : [blankFloor()];
@@ -303,12 +315,14 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
   const [future, setFuture] = useState<EFloor[][]>([]);
   const [zoom, setZoom] = useState(1);
   const [joining, setJoining] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirm();
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<{ error?: string; ok?: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const floor = plan.find((f) => f.key === floorKey) ?? plan[0];
-  const isEmpty = plan.every((f) => !f.tables.length && !f.zones.length && !f.fixtures.length);
+  // Nothing drawn yet: no tables or fixed elements (a new floor's own "Sala" area doesn't count).
+  const isEmpty = plan.every((f) => !f.tables.length && !f.fixtures.length);
 
   useEffect(() => {
     if (!dirty) return;
@@ -394,7 +408,30 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
 
   const update = (kind: Kind, key: string, patch: Partial<ETable & EZone & EFixture>) => commit(patched(plan, kind, key, patch));
 
-  const updateFloor = (patch: Partial<EFloor>) => commit(plan.map((f) => (f.key === floor.key ? { ...f, ...patch } : f)));
+  /** Floor changes; an area that covered the whole floor keeps covering it when the floor is resized. */
+  const updateFloor = (patch: Partial<EFloor>) =>
+    commit(
+      plan.map((f) => {
+        if (f.key !== floor.key) return f;
+        const next = { ...f, ...patch };
+        const zones = f.zones.map((z) =>
+          z.x === 0 && z.y === 0 && z.w === f.width && z.h === f.height ? { ...z, w: next.width, h: next.height } : z,
+        );
+        return { ...next, zones };
+      }),
+    );
+
+  /** The middle of the part of the plan that's on screen, in plan centimetres. */
+  const viewCentre = () => {
+    const svg = svgRef.current;
+    const box = scrollRef.current?.getBoundingClientRect();
+    if (!svg || !box) return { x: floor.width / 2, y: floor.height / 2 };
+    const pt = svg.createSVGPoint();
+    pt.x = (box.left + box.right) / 2;
+    pt.y = (Math.max(box.top, 0) + Math.min(box.bottom, window.innerHeight)) / 2;
+    const p = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: clamp(p.x, 0, floor.width), y: clamp(p.y, 0, floor.height) };
+  };
 
   const addTo = (kind: Kind, item: ETable | EZone | EFixture) => {
     commit(
@@ -419,7 +456,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
       bookableOnline: true,
       rotation: 0,
       ...size,
-      ...freeSpot(floor, size.w, size.h),
+      ...freeSpotNear(floor, size.w, size.h, viewCentre()),
     });
   };
 
@@ -427,14 +464,17 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
     const w = Math.min(600, floor.width);
     const h = Math.min(400, floor.height);
     const n = plan.flatMap((f) => f.zones).length + 1;
-    addTo("zone", { key: newKey(), name: n === 1 ? "Sala" : `Sala ${n}`, bookableOnline: true, x: 0, y: 0, w, h });
+    const c = viewCentre();
+    const x = snap(clamp(c.x - w / 2, 0, floor.width - w));
+    const y = snap(clamp(c.y - h / 2, 0, floor.height - h));
+    addTo("zone", { key: newKey(), name: n === 1 ? "Sala" : `Sala ${n}`, bookableOnline: true, x, y, w, h });
   };
 
   const addFixture = (kind: FixtureKind) => {
     const d = FIXTURES[kind];
     const w = Math.min(d.w, floor.width);
     const h = Math.min(d.h, floor.height);
-    addTo("fixture", { key: newKey(), kind, label: d.label, w, h, rotation: 0, ...freeSpot(floor, w, h, 10) });
+    addTo("fixture", { key: newKey(), kind, label: d.label, w, h, rotation: 0, ...freeSpotNear(floor, w, h, viewCentre(), 10) });
   };
 
   const remove = (kind: Kind, key: string) => {
@@ -506,10 +546,14 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
     setSel(null);
   };
 
-  const removeFloor = () => {
+  const removeFloor = async () => {
     if (plan.length === 1) return;
     const n = floor.tables.length;
-    if (!window.confirm(`Eliminare “${floor.name}”${n ? ` e i suoi ${n} tavoli? Le loro prenotazioni resteranno senza tavolo` : ""}?`)) return;
+    const ok = await confirm(
+      `Eliminare “${floor.name}”${n ? ` e i suoi ${n} tavoli? Le loro prenotazioni resteranno senza tavolo` : ""}?`,
+      "Elimina piano",
+    );
+    if (!ok) return;
     const next = plan.filter((f) => f.key !== floor.key);
     commit(next);
     setFloorKey(next[0].key);
@@ -613,6 +657,9 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
   const selTable = sel?.kind === "table" ? (selected as ETable | undefined) : undefined;
   const selZone = sel?.kind === "zone" ? (selected as EZone | undefined) : undefined;
   const selFixture = sel?.kind === "fixture" ? (selected as EFixture | undefined) : undefined;
+  const zoneOf = (t: ETable) => zoneFor({ ...t, floorId: "" }, floor.zones.map((z) => ({ ...z, floorId: "" })));
+  // A table outside every drawn area belongs to no room: flag it so it isn't missed.
+  const isOrphan = (t: ETable) => floor.zones.length > 0 && !zoneOf(t);
   const joinCombo = joining ? floor.combos.find((c) => c.key === joining) : undefined;
   const labelOfKey = new Map(floor.tables.map((t) => [t.key, t.label]));
   const comboName = (c: ECombo) => c.tableKeys.map((k) => labelOfKey.get(k)).join("+");
@@ -638,6 +685,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
 
   return (
     <div className="floor">
+      {dialog}
       <div className="floor-main">
         <div className="floor-tabs" role="tablist" aria-label="Piani">
           {plan.map((f) => (
@@ -687,7 +735,7 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
           <button type="button" className="btn btn-small" aria-label="Ingrandisci" onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + 1)])}>+</button>
         </div>
 
-        <div className="plan-scroll">
+        <div className="plan-scroll" ref={scrollRef}>
           <svg
             ref={svgRef}
             className="plan-svg editing"
@@ -714,10 +762,10 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
             {floor.tables.map((t) => (
               <g
                 key={t.key}
-                className={`tb${sel?.key === t.key ? " is-selected" : ""}${t.bookableOnline ? "" : " is-offline"}${joinCombo?.tableKeys.includes(t.key) ? " is-picked" : ""}`}
+                className={`tb${sel?.key === t.key ? " is-selected" : ""}${t.bookableOnline ? "" : " is-offline"}${joinCombo?.tableKeys.includes(t.key) ? " is-picked" : ""}${isOrphan(t) ? " is-orphan" : ""}`}
                 {...itemProps("table", t, `Tavolo ${t.label}, ${t.seats} posti`)}
               >
-                <TableShape t={t} lines={[fit(t.label, t.w, 13), t.minCovers > 1 ? `${t.minCovers}–${t.seats}` : `${t.seats} posti`]} />
+                <TableShape t={t} lines={[t.label, t.minCovers > 1 ? `${t.minCovers}–${t.seats}` : `${t.seats} posti`]} />
               </g>
             ))}
             {floor.zones.map((z) => (
@@ -822,7 +870,15 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
         {selTable && !joining && (
           <div className="panel stack">
             <h2>Tavolo {selTable.label}</h2>
-            <p className="small muted">In: {zoneFor({ ...selTable, floorId: "" }, floor.zones.map((z) => ({ ...z, floorId: "" })))?.name ?? "nessuna sala"}</p>
+            {floor.zones.length === 0 ? (
+              <p className="small muted">In: tutto il piano (non ci sono sale disegnate).</p>
+            ) : zoneOf(selTable) ? (
+              <p className="small muted">In: {zoneOf(selTable)!.name}</p>
+            ) : (
+              <p className="form-error small" role="alert">
+                Fuori da ogni sala: spostalo dentro un’area, o allarga l’area. Altrimenti non conta per nessuna sala quando l’ospite sceglie dove sedersi.
+              </p>
+            )}
             <div className="grid-fields">
               <label className="field">
                 Nome
@@ -959,7 +1015,12 @@ export function FloorEditor({ initial }: { initial: EditorInput }) {
               />
             </div>
             <p className="small muted">
-              {floor.tables.length} tavoli, {floor.zones.length} sale o aree, {floor.fixtures.length} elementi su questo piano. Tocca un elemento per modificarlo;
+              {floor.tables.length} tavoli, {floor.zones.length} sale o aree, {floor.fixtures.length} elementi su questo piano.
+              {floor.tables.some(isOrphan) && (
+                <span className="form-error" style={{ display: "block", marginTop: 6 }}>
+                  {floor.tables.filter(isOrphan).length} tavoli sono fuori da ogni sala (bordo rosso tratteggiato).
+                </span>
+              )} Tocca un elemento per modificarlo;
               per una sala, tocca la sua etichetta in alto a sinistra.
             </p>
             {plan.length > 1 && (
@@ -1024,7 +1085,7 @@ function AngleField({ value, onChange }: { value: number; onChange: (v: number) 
   return (
     <div className="field">
       Angolo (°)
-      <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+      <div className="row angle-field" style={{ gap: 6, flexWrap: "nowrap" }}>
         <button type="button" className="btn btn-small" aria-label="Ruota di 15° a sinistra" onClick={() => turn(-15)}>↺</button>
         <NumberInput value={value} min={0} max={359} step={5} onChange={onChange} label="Angolo in gradi" />
         <button type="button" className="btn btn-small" aria-label="Ruota di 15° a destra" onClick={() => turn(15)}>↻</button>

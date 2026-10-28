@@ -2,7 +2,9 @@
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { capitalize } from "@/lib/time";
+import { DatePicker } from "@/components/DatePicker";
 import { createBooking, joinWaitlist, type BookingResult, type WaitResult } from "./actions";
+import { checkContact, FieldError, focusFirstError } from "@/components/FieldError";
 
 type Day = { date: string; open: boolean };
 
@@ -39,6 +41,14 @@ export function BookingFlow({
     days.find((d) => d.date === initialDate && d.open)?.date ?? days.find((d) => d.open)?.date ?? days[0].date,
   );
   const [zone, setZone] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const clearError = (name: string) =>
+    setFieldErrors((errors) => {
+      if (!errors[name]) return errors;
+      const rest = { ...errors };
+      delete rest[name];
+      return rest;
+    });
   const [slots, setSlots] = useState<string[] | null>(null);
   const [time, setTime] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
@@ -79,6 +89,7 @@ export function BookingFlow({
     fn();
   };
   const quickDays = days.slice(0, 7);
+  const isOpenOn = new Map(days.map((d) => [d.date, d.open]));
   const partyChips = Array.from({ length: Math.min(maxPartySize, 8) }, (_, i) => i + 1);
 
   if (time) {
@@ -96,9 +107,13 @@ export function BookingFlow({
         </div>
         <form
           className="stack"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             const data = new FormData(e.currentTarget);
+            const errors = checkContact(data, { name: "guestName", phone: "guestPhone", email: "guestEmail" });
+            setFieldErrors(errors);
+            if (Object.keys(errors).length) return focusFirstError(e.currentTarget, errors);
             startTransition(() => run(data));
           }}
         >
@@ -111,18 +126,47 @@ export function BookingFlow({
           </div>
           <label className="field">
             Nome e cognome
-            <input className="input" name="guestName" autoComplete="name" required />
+            <input
+              className="input"
+              name="guestName"
+              autoComplete="name"
+              aria-invalid={!!fieldErrors.guestName}
+              aria-describedby={fieldErrors.guestName ? "err-guestName" : undefined}
+              onInput={() => clearError("guestName")}
+            />
+            <FieldError id="err-guestName" message={fieldErrors.guestName} />
           </label>
           <div className="grid-2">
             <label className="field">
               Telefono
-              <input className="input" type="tel" name="guestPhone" autoComplete="tel" required />
+              <input
+                className="input"
+                type="tel"
+                name="guestPhone"
+                autoComplete="tel"
+                aria-invalid={!!fieldErrors.guestPhone}
+                aria-describedby={fieldErrors.guestPhone ? "err-guestPhone" : undefined}
+                onInput={() => clearError("guestPhone")}
+              />
+              <FieldError id="err-guestPhone" message={fieldErrors.guestPhone} />
             </label>
             <label className="field">
               Email <span className="hint">Ti mandiamo la conferma</span>
-              <input className="input" type="email" name="guestEmail" autoComplete="email" required />
+              <input
+                className="input"
+                type="email"
+                name="guestEmail"
+                autoComplete="email"
+                aria-invalid={!!fieldErrors.guestEmail}
+                aria-describedby={fieldErrors.guestEmail ? "err-guestEmail" : undefined}
+                onInput={() => clearError("guestEmail")}
+              />
+              <FieldError id="err-guestEmail" message={fieldErrors.guestEmail} />
             </label>
           </div>
+          {Object.keys(fieldErrors).length > 0 && (
+            <p className="form-error" role="alert">Controlla i campi segnati in rosso.</p>
+          )}
           <label className="field">
             Note per il ristorante <span className="hint">Allergie, seggiolone, una ricorrenza…</span>
             <textarea className="input" name="notes" maxLength={500} />
@@ -204,15 +248,16 @@ export function BookingFlow({
               {i === 0 ? "Oggi" : i === 1 ? "Domani" : dayFmt.format(asDate(d.date))}
             </button>
           ))}
-          <input
-            className="input chip"
-            style={{ width: "auto" }}
-            type="date"
-            aria-label="Un altro giorno"
+          <DatePicker
+            key={quickDays.some((d) => d.date === date) ? "other" : date}
+            className="chip-date"
+            defaultValue={quickDays.some((d) => d.date === date) ? "" : date}
+            placeholder="Altro giorno"
+            label="Un altro giorno"
             min={days[0].date}
             max={days[days.length - 1].date}
-            value={quickDays.some((d) => d.date === date) ? "" : date}
-            onChange={(e) => e.target.value && pick(() => setDate(e.target.value))}
+            isDisabled={(d) => !isOpenOn.get(d)}
+            onChange={(d) => pick(() => setDate(d))}
           />
         </div>
       </div>
@@ -249,6 +294,7 @@ export function BookingFlow({
 function WaitlistForm({ slug, date, party }: { slug: string; date: string; party: number }) {
   const [open, setOpen] = useState(false);
   const [state, run, pending] = useActionState<WaitResult, FormData>(joinWaitlist.bind(null, slug), null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   if (state?.ok) return <p className="form-ok" role="status">{state.ok}</p>;
   if (!open) {
     return (
@@ -261,9 +307,13 @@ function WaitlistForm({ slug, date, party }: { slug: string; date: string; party
     <form
       className="stack"
       style={{ gap: 12 }}
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
         const data = new FormData(e.currentTarget);
+        const found = checkContact(data, { name: "name", email: "email", phone: "phone", phoneOptional: true });
+        setErrors(found);
+        if (Object.keys(found).length) return focusFirstError(e.currentTarget, found);
         startTransition(() => run(data));
       }}
     >
@@ -274,15 +324,18 @@ function WaitlistForm({ slug, date, party }: { slug: string; date: string; party
       </div>
       <label className="field">
         Nome e cognome
-        <input className="input" name="name" autoComplete="name" required />
+        <input className="input" name="name" autoComplete="name" aria-invalid={!!errors.name} aria-describedby={errors.name ? "werr-name" : undefined} />
+        <FieldError id="werr-name" message={errors.name} />
       </label>
       <label className="field">
         Email <span className="hint">Ti scriviamo qui se si libera un tavolo</span>
-        <input className="input" type="email" name="email" autoComplete="email" required />
+        <input className="input" type="email" name="email" autoComplete="email" aria-invalid={!!errors.email} aria-describedby={errors.email ? "werr-email" : undefined} />
+        <FieldError id="werr-email" message={errors.email} />
       </label>
       <label className="field">
         Telefono <span className="hint">Facoltativo</span>
-        <input className="input" type="tel" name="phone" autoComplete="tel" />
+        <input className="input" type="tel" name="phone" autoComplete="tel" aria-invalid={!!errors.phone} aria-describedby={errors.phone ? "werr-phone" : undefined} />
+        <FieldError id="werr-phone" message={errors.phone} />
       </label>
       {state?.error && <p className="form-error" role="alert">{state.error}</p>}
       <div>

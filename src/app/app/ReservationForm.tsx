@@ -1,6 +1,8 @@
 import type { Reservation } from "@/db/schema";
 import type { TableOption } from "@/lib/plan";
 import { ActionForm } from "@/components/ActionForm";
+import { DatePicker } from "@/components/DatePicker";
+import { TimeSelect } from "@/components/TimeSelect";
 import { saveReservation } from "./actions";
 
 export function ReservationForm({
@@ -16,14 +18,14 @@ export function ReservationForm({
     <ActionForm action={saveReservation} submitLabel={initial ? "Salva le modifiche" : "Aggiungi la prenotazione"}>
       {initial && <input type="hidden" name="id" value={initial.id} />}
       <div className="grid-3">
-        <label className="field">
+        <div className="field">
           Data
-          <input className="input" type="date" name="date" defaultValue={initial?.date ?? date} required />
-        </label>
-        <label className="field">
+          <DatePicker name="date" defaultValue={initial?.date ?? date} label="Data" />
+        </div>
+        <div className="field">
           Ora
-          <input className="input" type="time" name="time" step={300} defaultValue={initial?.time ?? "20:00"} required />
-        </label>
+          <TimeSelect name="time" defaultValue={initial?.time ?? "20:00"} label="Ora" />
+        </div>
         <label className="field">
           Persone
           <input className="input" type="number" name="partySize" min={1} max={200} defaultValue={initial?.partySize ?? 2} required />
@@ -81,6 +83,9 @@ export function ReservationForm({
           </select>
         </label>
       )}
+      <label className="check">
+        <input type="checkbox" name="outsideHours" /> Accetta anche fuori orario o in un giorno di chiusura
+      </label>
       {!initial && (
         <label className="check">
           <input type="checkbox" name="sendEmail" defaultChecked /> Manda la conferma all’ospite, se c’è l’email

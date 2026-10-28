@@ -86,6 +86,7 @@ export function BookingRow({ b, table, guest }: { b: RowBooking; table?: string;
               <ConfirmButton
                 className="btn btn-small btn-danger"
                 question={`Cancellare la prenotazione di ${b.guestName}?${b.guestEmail ? " L’ospite riceverà un’email." : ""}`}
+                confirmLabel="Cancella prenotazione"
               >
                 {a.label}
               </ConfirmButton>

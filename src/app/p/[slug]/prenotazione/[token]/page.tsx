@@ -75,7 +75,7 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
           {embed && <input type="hidden" name="embed" value="1" />}
           <p className="small muted">Non puoi più venire? Cancella qui, così il tavolo torna libero per qualcun altro.</p>
           <div>
-            <ConfirmButton className="btn btn-danger" question="Vuoi davvero cancellare la prenotazione?">Cancella la prenotazione</ConfirmButton>
+            <ConfirmButton className="btn btn-danger" question="Vuoi davvero cancellare la prenotazione? Il tavolo tornerà libero per altri." confirmLabel="Sì, cancella">Cancella la prenotazione</ConfirmButton>
           </div>
         </form>
       )}

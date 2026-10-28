@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { ActionForm } from "@/components/ActionForm";
+import { DatePicker } from "@/components/DatePicker";
+import { TimeSelect } from "@/components/TimeSelect";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyButton } from "@/components/CopyButton";
 import { requireAccount } from "@/lib/auth";
@@ -81,9 +83,9 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/imp
                           <label className="check">
                             <input type="checkbox" name={`d${w}_${i}_on`} defaultChecked={!!h} /> {name}
                           </label>
-                          <input className="input" type="time" step={900} name={`d${w}_${i}_start`} defaultValue={h?.startTime ?? fallback[0]} aria-label={`${day}, ${name}, primo arrivo`} />
+                          <TimeSelect name={`d${w}_${i}_start`} defaultValue={h?.startTime ?? fallback[0]} step={15} label={`${day}, ${name}, primo arrivo`} />
                           –
-                          <input className="input" type="time" step={900} name={`d${w}_${i}_end`} defaultValue={h?.endTime ?? fallback[1]} aria-label={`${day}, ${name}, ultimo arrivo`} />
+                          <TimeSelect name={`d${w}_${i}_end`} defaultValue={h?.endTime ?? fallback[1]} step={15} label={`${day}, ${name}, ultimo arrivo`} />
                         </div>
                       </td>
                     );
@@ -172,17 +174,17 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/imp
                 </span>
                 <form action={removeClosure}>
                   <input type="hidden" name="id" value={c.id} />
-                  <ConfirmButton className="btn btn-small btn-quiet" question="Riaprire le prenotazioni per questa data?">Rimuovi</ConfirmButton>
+                  <ConfirmButton className="btn btn-small btn-quiet" question="Riaprire le prenotazioni per questa data?" confirmLabel="Riapri">Rimuovi</ConfirmButton>
                 </form>
               </li>
             ))}
           </ul>
         )}
         <ActionForm action={addClosure} submitLabel="Aggiungi chiusura" className="row">
-          <label className="field">
+          <div className="field">
             Data
-            <input className="input" type="date" name="date" min={today} required />
-          </label>
+            <DatePicker name="date" min={today} label="Data di chiusura" />
+          </div>
           <label className="field" style={{ flex: "1 1 220px" }}>
             Motivo <span className="hint">Facoltativo</span>
             <input className="input" name="note" placeholder="Es. ferie, evento privato" />

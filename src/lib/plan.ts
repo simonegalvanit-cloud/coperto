@@ -52,7 +52,10 @@ export type Plan = Awaited<ReturnType<typeof loadPlan>>;
  * with their floor and zone ("Piano terra · Sala"), in plan order.
  */
 export async function tableOptions(restaurantId: string) {
-  const { floors, zones, tables, combos } = await loadPlan(restaurantId);
+  return optionsFromPlan(await loadPlan(restaurantId));
+}
+
+export function optionsFromPlan({ floors, zones, tables, combos }: Plan) {
   const zoneName = new Map(zones.map((z) => [z.id, z.name]));
   const floorOrder = new Map(floors.map((f, i) => [f.id, i]));
   const floorName = new Map(floors.map((f) => [f.id, f.name]));
@@ -89,7 +92,7 @@ export async function tableOptions(restaurantId: string) {
   );
 }
 
-export type TableOption = Awaited<ReturnType<typeof tableOptions>>[number];
+export type TableOption = ReturnType<typeof optionsFromPlan>[number];
 
 /** Names of the areas closed on this date. */
 export async function closedAreas(restaurantId: string, date: string) {
