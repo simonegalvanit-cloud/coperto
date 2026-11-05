@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
+import { databaseHealth } from "@/lib/health";
 
 /**
- * Where the server runs and how far the database is: the time of a few trivial queries. Every page makes
- * several, so a slow round trip here explains a slow app. Reveals nothing about anyone's data.
+ * Whether the database is set, reachable and up to date, where the server runs and how far the database is
+ * (the time of a few trivial queries: every page makes several, so a slow round trip explains a slow app).
+ * Reveals nothing about anyone's data, nor connection details.
  */
 export async function GET() {
+  const headers = { "Cache-Control": "no-store" };
+  const health = await databaseHealth();
+  const serverRegion = process.env.VERCEL_REGION ?? "local";
+  if (!health.ok) return NextResponse.json({ serverRegion, database: health.message }, { status: 503, headers });
+
   const db = await getDb();
-  await db.execute(sql`select 1`); // open the connection first, so it isn't counted
   const times: number[] = [];
   for (let i = 0; i < 5; i++) {
     const t = performance.now();
@@ -19,7 +25,9 @@ export async function GET() {
   const roundTrip = times[2];
   return NextResponse.json(
     {
-      serverRegion: process.env.VERCEL_REGION ?? "local",
+      serverRegion,
+      database: health.message,
+      migrations: health.expected ? `${health.applied ?? "?"}/${health.expected}` : undefined,
       databaseRoundTripMs: roundTrip,
       verdict:
         roundTrip < 10
@@ -28,6 +36,6 @@ export async function GET() {
             ? "Buono."
             : "Lento: server e database sono lontani. Metti il server nella stessa regione del database (vercel.json, regions).",
     },
-    { headers: { "Cache-Control": "no-store" } },
+    { headers },
   );
 }
