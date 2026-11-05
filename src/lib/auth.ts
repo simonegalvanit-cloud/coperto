@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { and, asc, eq, gt, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { can, type Permission } from "./roles";
+import { can, type MemberRole, type Permission } from "./roles";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 const COOKIE = "coperto_session";
@@ -37,6 +37,48 @@ export function newSession(userId: string, restaurantId: string | null = null) {
   const token = randomToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
   return { token, row: { id: sessionId(token), userId, expiresAt, restaurantId } };
+}
+
+const DEVICE_COOKIE = "coperto_device";
+const DEVICE_DAYS = 365;
+// A PIN session lasts a working day at most; the tablet also locks itself when nobody touches it.
+const TABLET_SESSION_HOURS = 12;
+
+/** The room tablet this browser has been authorised as, with its restaurant, or null. */
+export const getDevice = cache(async () => {
+  const token = (await cookies()).get(DEVICE_COOKIE)?.value;
+  if (!token) return null;
+  const db = await getDb();
+  const [row] = await db
+    .select({ device: schema.devices, restaurant: { id: schema.restaurants.id, name: schema.restaurants.name, slug: schema.restaurants.slug } })
+    .from(schema.devices)
+    .innerJoin(schema.restaurants, eq(schema.restaurants.id, schema.devices.restaurantId))
+    .where(eq(schema.devices.id, tokenHash(token)));
+  return row ?? null;
+});
+
+/** Marks this browser as a room tablet of the restaurant, for a year (renewed every time it's authorised). */
+export async function authoriseDevice(restaurantId: string, name: string, createdBy: string) {
+  const db = await getDb();
+  const token = randomToken();
+  await db.insert(schema.devices).values({ id: tokenHash(token), restaurantId, name, createdBy });
+  (await cookies()).set(DEVICE_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: new Date(Date.now() + DEVICE_DAYS * 86_400_000),
+  });
+}
+
+/** Opens a PIN session on a room tablet: tied to the device, so revoking the tablet ends it. */
+export async function startTabletSession(userId: string, restaurantId: string, deviceId: string) {
+  const db = await getDb();
+  const { token, row } = newSession(userId, restaurantId);
+  const expiresAt = new Date(Date.now() + TABLET_SESSION_HOURS * 3_600_000);
+  await db.insert(schema.sessions).values({ ...row, expiresAt, deviceId });
+  await db.update(schema.devices).set({ lastUsedAt: new Date() }).where(eq(schema.devices.id, deviceId));
+  await setSessionCookie(token, expiresAt);
 }
 
 /** The SHA-256 of a token: what's stored for sessions and one-time links, so a database leak can't be replayed. */
@@ -87,9 +129,10 @@ export const getCurrentAccount = cache(async () => {
   const { sessions, users, members, restaurants } = schema;
   const [row] = await db
     .select({
-      user: { id: users.id, email: users.email, name: users.name },
+      user: { id: users.id, email: users.email, name: users.name, hasPassword: sql<boolean>`${users.passwordHash} is not null` },
       restaurant: restaurants,
       role: members.role,
+      deviceId: sessions.deviceId,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -98,7 +141,11 @@ export const getCurrentAccount = cache(async () => {
     .where(and(eq(sessions.id, id), gt(sessions.expiresAt, new Date())))
     .orderBy(sql`${members.restaurantId} = ${sessions.restaurantId} desc nulls last`, asc(members.createdAt))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  // On the shared room tablet, a PIN is enough for the day's work but not for the account: the owner works
+  // there as a manager, and deletes or hands over the restaurant from their own login.
+  const role: MemberRole = row.deviceId && row.role === "owner" ? "manager" : row.role;
+  return { ...row, role, onTablet: !!row.deviceId };
 });
 
 /**
@@ -107,7 +154,7 @@ export const getCurrentAccount = cache(async () => {
  */
 export async function requireAccount(permission?: Permission) {
   const account = await getCurrentAccount();
-  if (!account) redirect("/accedi");
+  if (!account) redirect((await getDevice()) ? "/sala" : "/accedi");
   if (permission && !can(account.role, permission)) redirect("/app");
   return account;
 }

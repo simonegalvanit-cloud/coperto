@@ -10,12 +10,13 @@ import type { ActionResult } from "@/components/ActionForm";
 import { currentSessionId, endSession, endSessionsOf, hashPassword, requireAccount, verifyPassword } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { TERMS_VERSION } from "@/lib/legal";
+import { isPin, isWeakPin, setPin } from "@/lib/pins";
 import { deleteRestaurant } from "@/lib/team";
 
 async function passwordOk(userId: string, password: string) {
   const db = await getDb();
   const [u] = await db.select({ hash: schema.users.passwordHash }).from(schema.users).where(eq(schema.users.id, userId));
-  return !!u && (await verifyPassword(password, u.hash));
+  return !!u?.hash && (await verifyPassword(password, u.hash));
 }
 
 /** After an account is gone: drop the cookie and any pages the browser kept. */
@@ -109,7 +110,7 @@ export async function closeRestaurant(_: ActionResult, data: FormData): Promise<
     return { error: `Scrivi il nome del ristorante esattamente così: ${restaurant.name}` };
   }
   await deleteRestaurant(restaurant.id);
-  await sendEmail({
+  if (user.email) await sendEmail({
     to: user.email,
     subject: `${restaurant.name} è stato eliminato da Coperto`,
     text: [
@@ -124,4 +125,21 @@ export async function closeRestaurant(_: ActionResult, data: FormData): Promise<
   await endSession();
   await signedOut(`/account-eliminato?ristorante=${encodeURIComponent(restaurant.name)}`);
   return null;
+}
+
+/** Chooses one's own 6-digit PIN for the room tablet of the restaurant they're working in. */
+export async function setMyPin(_: ActionResult, data: FormData): Promise<ActionResult> {
+  const { restaurant, user } = await requireAccount();
+  const pin = String(data.get("pin") ?? "").trim();
+  if (!isPin(pin)) return { error: "Il PIN è fatto di 6 cifre." };
+  if (isWeakPin(pin)) return { error: "Troppo facile da indovinare: evita cifre tutte uguali o in fila." };
+  if (pin !== String(data.get("again") ?? "").trim()) return { error: "I due PIN non coincidono." };
+  const db = await getDb();
+  const [member] = await db
+    .select({ id: schema.members.id })
+    .from(schema.members)
+    .where(and(eq(schema.members.userId, user.id), eq(schema.members.restaurantId, restaurant.id)));
+  if (!member) return { error: "Non fai parte di questo team." };
+  await setPin(member.id, pin);
+  return { ok: "PIN salvato. Usalo sul tablet della sala." };
 }

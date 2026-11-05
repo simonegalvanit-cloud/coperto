@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, notExists, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import type { ActionResult } from "@/components/ActionForm";
-import { requireAccount } from "@/lib/auth";
+import { authoriseDevice, endSession, hashPassword, requireAccount } from "@/lib/auth";
 import { normalizeEmail } from "@/lib/contact";
 import { assignableRoles, type MemberRole } from "@/lib/roles";
+import { generatePin, setPin } from "@/lib/pins";
 import { sendInvite } from "@/lib/team";
 
 const inviteSchema = z.object({
@@ -93,6 +94,16 @@ export async function removeMember(data: FormData) {
   if (!member || !mayManage(role, member.role)) return;
   const db = await getDb();
   await db.delete(schema.members).where(eq(schema.members.id, member.id));
+  // Someone who only had a PIN here has nothing left to log in with: their account goes too.
+  await db
+    .delete(schema.users)
+    .where(
+      and(
+        eq(schema.users.id, member.userId),
+        isNull(schema.users.email),
+        notExists(db.select({ one: sql`1` }).from(schema.members).where(eq(schema.members.userId, member.userId))),
+      ),
+    );
   revalidatePath("/app", "layout");
 }
 
@@ -118,4 +129,63 @@ export async function transferOwnership(_: ActionResult, data: FormData): Promis
   revalidatePath("/app", "layout");
   // The old owner no longer sees this form, so the confirmation goes on the page itself.
   redirect(`/app/team?titolare=${encodeURIComponent(member.name)}`);
+}
+
+// ---------- PINs and room tablets ----------
+
+const pinMemberSchema = z.object({
+  name: z.string().trim().min(2, "Scrivi il nome.").max(80),
+  role: z.enum(["manager", "staff"]),
+});
+
+/** Adds someone who only uses the room tablet: no email, no password, just a name and a PIN shown once. */
+export async function addPinMember(_: ActionResult, data: FormData): Promise<ActionResult> {
+  const { restaurant, role } = await requireAccount("team");
+  const parsed = pinMemberSchema.safeParse(Object.fromEntries(data));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!assignableRoles(role).includes(parsed.data.role)) return { error: "Solo il titolare può aggiungere responsabili." };
+  const db = await getDb();
+  const pin = generatePin();
+  const pinHash = await hashPassword(pin);
+  await db.transaction(async (tx) => {
+    const [user] = await tx.insert(schema.users).values({ name: parsed.data.name }).returning({ id: schema.users.id });
+    await tx.insert(schema.members).values({ restaurantId: restaurant.id, userId: user.id, role: parsed.data.role, pinHash });
+  });
+  revalidatePath("/app/team");
+  return { ok: `${parsed.data.name} è nel team. Il suo PIN è ${pin}: daglielo ora, non lo mostreremo più.` };
+}
+
+/** A fresh PIN for a team member (forgotten, or locked), shown once. Also unlocks it. */
+export async function newPin(_: ActionResult, data: FormData): Promise<ActionResult> {
+  const { restaurant, role, user } = await requireAccount("team");
+  const member = await memberHere(restaurant.id, data.get("id"));
+  if (!member || (member.userId !== user.id && !mayManage(role, member.role))) return { error: "Non puoi cambiare il PIN di questa persona." };
+  const pin = generatePin();
+  await setPin(member.id, pin);
+  revalidatePath("/app/team");
+  return { ok: `Nuovo PIN di ${member.name}: ${pin}. Daglielo ora, non lo mostreremo più.` };
+}
+
+/**
+ * Makes this browser a room tablet: the person authorising it is logged out here, and from now on the tablet
+ * shows the team's PIN keypad.
+ */
+export async function authoriseThisDevice(data: FormData) {
+  const { restaurant, user, onTablet } = await requireAccount("team");
+  if (onTablet) redirect("/app/team");
+  const name = String(data.get("name") ?? "").trim().slice(0, 60) || "Tablet della sala";
+  await authoriseDevice(restaurant.id, name, user.id);
+  await endSession();
+  revalidatePath("/", "layout");
+  redirect("/sala");
+}
+
+/** Revokes a room tablet: its keypad stops working and whoever is logged in on it is logged out. */
+export async function revokeDevice(data: FormData) {
+  const { restaurant } = await requireAccount("team");
+  const db = await getDb();
+  await db
+    .delete(schema.devices)
+    .where(and(eq(schema.devices.id, String(data.get("id") ?? "")), eq(schema.devices.restaurantId, restaurant.id)));
+  revalidatePath("/app/team");
 }

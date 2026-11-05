@@ -7,12 +7,12 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { requireAccount } from "@/lib/auth";
 import { can, ROLE_HINT, ROLE_LABEL } from "@/lib/roles";
 import { nowIn } from "@/lib/time";
-import { changePassword, closeRestaurant, deleteMyAccount, leaveRestaurant, saveName, switchRestaurant } from "./actions";
+import { changePassword, closeRestaurant, deleteMyAccount, leaveRestaurant, saveName, setMyPin, switchRestaurant } from "./actions";
 
 export const metadata: Metadata = { title: "Il mio account" };
 
 export default async function AccountPage() {
-  const { restaurant, role, user } = await requireAccount();
+  const { restaurant, role, user, onTablet } = await requireAccount();
   const db = await getDb();
   const owner = can(role, "account");
   const [teams, [upcoming]] = await Promise.all([
@@ -39,7 +39,7 @@ export default async function AccountPage() {
       <div>
         <h1>Il mio account</h1>
         <p className="muted">
-          {user.email} · {ROLE_LABEL[role]} da {restaurant.name}. {ROLE_HINT[role]}
+          {user.email ?? "Accesso solo con PIN"} · {ROLE_LABEL[role]} da {restaurant.name}. {ROLE_HINT[role]}
         </p>
       </div>
 
@@ -83,6 +83,26 @@ export default async function AccountPage() {
 
       <section className="panel settings-section">
         <header>
+          <h2>PIN per il tablet della sala</h2>
+          <p className="muted">6 cifre, solo tue: sul tablet della sala tocchi il tuo nome e lo scrivi. Vale solo da {restaurant.name}.</p>
+        </header>
+        <ActionForm action={setMyPin} submitLabel="Salva il PIN">
+          <div className="grid-2">
+            <label className="field">
+              Nuovo PIN
+              <input className="input" type="password" name="pin" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="off" required />
+            </label>
+            <label className="field">
+              Ripeti il PIN
+              <input className="input" type="password" name="again" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="off" required />
+            </label>
+          </div>
+        </ActionForm>
+      </section>
+
+      {user.hasPassword && !onTablet && (
+      <section className="panel settings-section">
+        <header>
           <h2>Password</h2>
         </header>
         <ActionForm action={changePassword} submitLabel="Cambia la password">
@@ -98,6 +118,7 @@ export default async function AccountPage() {
           </div>
         </ActionForm>
       </section>
+      )}
 
       {owner && (
         <section className="panel settings-section">

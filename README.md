@@ -73,6 +73,14 @@ it respects the minimum notice and booking window, and the day isn't a closure.
 | `/password-dimenticata` | Emails a one-hour, single-use link to set a new password. Same answer whatever the email, so it doesn't reveal who has an account. |
 | `/termini`, `/privacy`, `/cookie`, `/dpa` | Terms of Service, Coperto's privacy policy, cookie policy, and the data processing agreement (GDPR art. 28). Accepted at signup; existing owners get a banner to accept. Company details to fill in: `src/lib/legal.ts`. |
 
+**Room tablet with PINs.** On the Team page an owner or manager taps "Usa questo dispositivo come tablet della sala": that
+browser becomes the restaurant's tablet (a year-long cookie; revocable from the Team page). On it, `/sala` shows "Chi sei?":
+tap your name, type your 6-digit PIN. It locks after 5 minutes without touches or with "Blocca". PINs work only on authorised
+tablets; 5 wrong tries lock that PIN for 15 minutes; weak PINs (111111, 123456) are refused. Staff can be added without an
+email ("Aggiungi senza email"): they get a generated PIN, shown once, and their account is deleted when removed from the
+team. On the tablet the owner works as a manager (no deleting or exporting the restaurant). Anyone can set their own PIN in
+"Il mio account"; owners and managers can issue a new one ("Nuovo PIN"), which also unlocks it.
+
 Every booking entered by staff records who entered it ("Inserita da Luca").
 
 ## Try it on your computer

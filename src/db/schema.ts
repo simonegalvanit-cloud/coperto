@@ -14,9 +14,10 @@ import {
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  email: text("email").notNull().unique(),
+  // Null for someone who only uses a PIN on the restaurant's tablet (a waiter added without an email).
+  email: text("email").unique(),
   name: text("name").notNull(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -29,6 +30,23 @@ export const sessions = pgTable("sessions", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   // The restaurant this login is working in, for someone on the team of more than one. Null: their first.
   restaurantId: uuid("restaurant_id").references(() => restaurants.id, { onDelete: "set null" }),
+  // Set for a session opened with a PIN on a restaurant's tablet; it ends when the tablet is revoked.
+  deviceId: text("device_id").references(() => devices.id, { onDelete: "cascade" }),
+});
+
+/**
+ * A tablet or computer the restaurant has authorised as its room device: on it, team members get in with their
+ * PIN. The id is the hash of the long-lived cookie that marks the device.
+ */
+export const devices = pgTable("devices", {
+  id: text("id").primaryKey(),
+  restaurantId: uuid("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
 });
 
 /** One-time links to set a new password; only the hash is stored, and they last an hour. */
@@ -89,6 +107,11 @@ export const members = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: memberRole("role").notNull(),
+    // A 6-digit PIN for the restaurant's tablets, hashed like a password. Per restaurant: it goes with the membership.
+    pinHash: text("pin_hash"),
+    // Wrong PINs in a row; at 5 the PIN is locked for a quarter of an hour.
+    pinFailures: integer("pin_failures").notNull().default(0),
+    pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("members_restaurant_user_idx").on(t.restaurantId, t.userId), index("members_user_idx").on(t.userId)],

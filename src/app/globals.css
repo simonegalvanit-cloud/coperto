@@ -385,3 +385,13 @@ body:has(.floor) .topbar-in { max-width: 1680px; }
 .legal th, .legal td { border: 1.5px solid var(--ink); padding: 8px; text-align: left; vertical-align: top; }
 .legal-nav { display: flex; flex-wrap: wrap; gap: 14px; font-size: 14px; }
 .danger-zone { border-color: var(--alert); }
+.who-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.who-grid .btn { min-height: 56px; font-size: 17px; }
+.pin-dots { display: flex; gap: 14px; justify-content: center; padding: 8px 0; }
+.pin-dots span { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--ink); }
+.pin-dots span.on { background: var(--ink); }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.keypad .btn { min-height: 64px; font-size: 26px; font-weight: 600; justify-content: center; }
+.pin-form { display: flex; flex-direction: row-reverse; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pin-form .btn { padding: 6px 12px; font-size: 14px; background: var(--paper); color: var(--ink); }
+.pin-form .form-ok, .pin-form .form-error { font-size: 14px; flex-basis: 100%; }

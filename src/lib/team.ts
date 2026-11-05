@@ -76,7 +76,7 @@ export async function sendPasswordReset(email: string) {
   const token = randomToken();
   await db.insert(schema.passwordResets).values({ id: tokenHash(token), userId: user.id, expiresAt: new Date(Date.now() + RESET_MINUTES * 60_000) });
   await sendEmail({
-    to: user.email,
+    to: email,
     subject: "Scegli una nuova password per Coperto",
     text: [
       `Ciao ${user.name},`,

@@ -22,7 +22,7 @@ export async function acceptInvite(_: ActionResult, data: FormData): Promise<Act
 
   let userId: string;
   if (existing) {
-    if (!(await verifyPassword(password, existing.passwordHash))) return { error: "Password non corretta." };
+    if (!existing.passwordHash || !(await verifyPassword(password, existing.passwordHash))) return { error: "Password non corretta." };
     userId = existing.id;
   } else {
     const name = String(data.get("name") ?? "").trim().slice(0, 80);

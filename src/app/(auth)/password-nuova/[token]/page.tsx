@@ -22,7 +22,7 @@ export default async function NewPasswordPage({ params }: PageProps<"/password-n
             </div>
             <ActionForm action={resetPassword} submitLabel="Salva e entra" wide>
               <input type="hidden" name="token" value={token} />
-              <input type="email" value={user.email} autoComplete="username" readOnly hidden />
+              <input type="email" value={user.email ?? ""} autoComplete="username" readOnly hidden />
               <label className="field">
                 Nuova password <span className="hint">Almeno 8 caratteri</span>
                 <input className="input" type="password" name="password" autoComplete="new-password" minLength={8} required />

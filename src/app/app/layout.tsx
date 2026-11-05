@@ -5,13 +5,15 @@ import { requireAccount } from "@/lib/auth";
 import { TERMS_VERSION } from "@/lib/legal";
 import { can } from "@/lib/roles";
 import { logout } from "../(auth)/actions";
+import { lockTablet } from "../sala/actions";
 import { acceptTerms } from "./account/actions";
+import { IdleLock } from "./IdleLock";
 import { NavLinks, type NavLink } from "./NavLinks";
 
 export const metadata: Metadata = { title: "Sala", robots: { index: false } };
 
 export default async function AppLayout({ children }: LayoutProps<"/app">) {
-  const { restaurant, role, user } = await requireAccount();
+  const { restaurant, role, user, onTablet } = await requireAccount();
   const links: NavLink[] = [
     { href: "/app", label: "Prenotazioni" },
     { href: "/app/sala", label: "Sala" },
@@ -31,9 +33,16 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
           <Link className="who" href="/app/account" title="Il mio account">
             <span className="muted">{restaurant.name}</span> · {user.name}
           </Link>
-          <form action={logout}>
-            <button className="btn btn-quiet btn-small" type="submit">Esci</button>
-          </form>
+          {onTablet ? (
+            <form action={lockTablet}>
+              <IdleLock minutes={5} />
+              <button className="btn btn-small" type="submit">Blocca</button>
+            </form>
+          ) : (
+            <form action={logout}>
+              <button className="btn btn-quiet btn-small" type="submit">Esci</button>
+            </form>
+          )}
         </div>
       </header>
       <main className="page">

@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { randomUUID } from "node:crypto";
-import { endSession, endSessionsOf, hashPassword, newSession, setSessionCookie, startSession, verifyPassword } from "@/lib/auth";
+import { endSession, endSessionsOf, getDevice, hashPassword, newSession, setSessionCookie, startSession, verifyPassword } from "@/lib/auth";
 import { resolvePasswordReset, sendPasswordReset } from "@/lib/team";
 import { slugify, uniqueSlug } from "@/lib/restaurant";
 import type { ActionResult } from "@/components/ActionForm";
@@ -157,5 +157,5 @@ export async function resetPassword(_: ActionResult, data: FormData): Promise<Ac
 export async function logout() {
   await endSession();
   revalidatePath("/", "layout");
-  redirect("/accedi");
+  redirect((await getDevice()) ? "/sala" : "/accedi");
 }
