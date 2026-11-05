@@ -19,7 +19,7 @@ const detailsSchema = z.object({
 });
 
 export async function saveDetails(_: ActionResult, data: FormData): Promise<ActionResult> {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("settings");
   const parsed = detailsSchema.safeParse(Object.fromEntries(data));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const db = await getDb();
@@ -43,7 +43,7 @@ const rulesSchema = z.object({
 });
 
 export async function saveRules(_: ActionResult, data: FormData): Promise<ActionResult> {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("settings");
   const parsed = rulesSchema.safeParse(Object.fromEntries(data));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { bookingOpen, remindersEnabled, maxCoversPerSlot, ...rest } = parsed.data;
@@ -63,7 +63,7 @@ export async function saveRules(_: ActionResult, data: FormData): Promise<Action
 
 /** The hours grid posts d{weekday}_{service}_{on|start|end} for every day and service. */
 export async function saveHours(_: ActionResult, data: FormData): Promise<ActionResult> {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("settings");
   const rows: (typeof schema.serviceHours.$inferInsert)[] = [];
   for (let weekday = 0; weekday < 7; weekday++) {
     for (const [i, name] of SERVICE_NAMES.entries()) {
@@ -87,7 +87,7 @@ export async function saveHours(_: ActionResult, data: FormData): Promise<Action
 }
 
 export async function addClosure(_: ActionResult, data: FormData): Promise<ActionResult> {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("settings");
   const date = String(data.get("date") ?? "");
   const note = String(data.get("note") ?? "").trim().slice(0, 120);
   if (!isDate(date)) return { error: "Scegli una data." };
@@ -98,7 +98,7 @@ export async function addClosure(_: ActionResult, data: FormData): Promise<Actio
 }
 
 export async function removeClosure(data: FormData) {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("settings");
   const id = z.uuid().parse(data.get("id"));
   const db = await getDb();
   await db.delete(schema.closures).where(and(eq(schema.closures.id, id), eq(schema.closures.restaurantId, restaurant.id)));
@@ -107,7 +107,7 @@ export async function removeClosure(data: FormData) {
 
 /** Sends now the reminders the morning job would send for tomorrow, e.g. to try them out. */
 export async function sendRemindersNow(): Promise<ActionResult> {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("settings");
   if (!restaurant.remindersEnabled) return { error: "I promemoria sono disattivati: attivali e salva le regole." };
   const sent = await sendDueReminders(restaurant);
   return {

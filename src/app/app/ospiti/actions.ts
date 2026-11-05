@@ -72,7 +72,7 @@ export async function saveGuest(_: ActionResult, data: FormData): Promise<Action
  * numbers, upcoming ones keep what's needed to welcome them.
  */
 export async function deleteGuest(data: FormData) {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("guests");
   await eraseGuest(restaurant.id, z.uuid().parse(data.get("id")), nowIn(restaurant.timezone).date);
   revalidatePath("/app", "layout");
   redirect("/app/ospiti");
@@ -101,7 +101,7 @@ export async function setGuestMarketing(data: FormData) {
 
 /** Deletes the ticked profiles from the "Senza consenso" list, each the same way as a single deletion. */
 export async function deleteUnconsented(data: FormData) {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("guests");
   const ids = z.array(z.uuid()).max(500).parse(data.getAll("id"));
   if (ids.length) {
     const db = await getDb();

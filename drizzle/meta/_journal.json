@@ -43,6 +43,13 @@
       "when": 1793230314015,
       "tag": "0005_guest_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793897817453,
+      "tag": "0006_team_accounts",
+      "breakpoints": true
     }
   ]
 }

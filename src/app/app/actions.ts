@@ -79,7 +79,7 @@ async function outsideOpening(restaurantId: string, date: string, time: string):
 
 /** Bookings entered by staff: no capacity check, the staff decides; outside opening hours only if ticked. */
 export async function saveReservation(_: ActionResult, data: FormData): Promise<ActionResult> {
-  const { restaurant } = await requireAccount();
+  const { restaurant, user } = await requireAccount();
   const raw = Object.fromEntries(data);
   const parsed = reservationSchema.safeParse({ ...raw, id: raw.id || undefined, guestEmail: String(raw.guestEmail ?? "").trim() });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -119,7 +119,7 @@ export async function saveReservation(_: ActionResult, data: FormData): Promise<
   } else {
     const [created] = await db
       .insert(schema.reservations)
-      .values({ ...fields, restaurantId: restaurant.id, durationMinutes: restaurant.durationMinutes, manageToken: randomToken() })
+      .values({ ...fields, restaurantId: restaurant.id, durationMinutes: restaurant.durationMinutes, manageToken: randomToken(), createdBy: user.id })
       .returning();
     if (sendEmail) await emailGuestConfirmation(restaurant, created);
   }

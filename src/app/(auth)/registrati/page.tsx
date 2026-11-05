@@ -39,6 +39,13 @@ export default async function SignupPage() {
             Password <span className="hint">Almeno 8 caratteri</span>
             <input className="input" type="password" name="password" autoComplete="new-password" minLength={8} required />
           </label>
+          <label className="check check-top">
+            <input type="checkbox" name="terms" required />
+            <span className="small">
+              Accetto i <Link href="/termini" target="_blank">Termini di servizio</Link> e l’
+              <Link href="/dpa" target="_blank">Accordo sul trattamento dei dati</Link>. Ho letto la <Link href="/privacy" target="_blank">Privacy</Link>.
+            </span>
+          </label>
         </ActionForm>
       </div>
       <p>

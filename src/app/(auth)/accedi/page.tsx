@@ -28,6 +28,9 @@ export default async function LoginPage() {
             <input className="input" type="password" name="password" autoComplete="current-password" required />
           </label>
         </ActionForm>
+        <p className="small">
+          <Link href="/password-dimenticata">Password dimenticata?</Link>
+        </p>
       </div>
       <p>
         Non hai ancora un account? <Link href="/registrati">Registra il tuo ristorante</Link>

@@ -14,7 +14,7 @@ import { addClosure, removeClosure, saveDetails, saveHours, saveRules, sendRemin
 export const metadata: Metadata = { title: "Impostazioni" };
 
 export default async function SettingsPage({ searchParams }: PageProps<"/app/impostazioni">) {
-  const { restaurant: r } = await requireAccount();
+  const { restaurant: r } = await requireAccount("settings");
   const [hours, closures, base, { benvenuto }] = await Promise.all([
     getServiceHours(r.id),
     getClosures(r.id),

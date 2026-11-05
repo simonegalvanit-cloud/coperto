@@ -85,6 +85,7 @@ export function FloorLive({
   guestInfo,
   waitlist,
   bookings,
+  canEditPlan,
 }: {
   date: string;
   isToday: boolean;
@@ -104,6 +105,7 @@ export function FloorLive({
   /** Guest markers, allergies and notes, by booking id. */
   guestInfo: Record<string, GuestInfo>;
   waitlist: WaitEntry[];
+  canEditPlan: boolean;
   bookings: FloorBooking[];
 }) {
   const [live, setLive] = useState(isToday);
@@ -629,7 +631,8 @@ export function FloorLive({
         )}
 
         <p className="small">
-          <Link href="/app/sala/modifica">Modifica la pianta</Link> · <Link href={`/app?data=${date}`}>Elenco prenotazioni</Link>
+          {canEditPlan && <><Link href="/app/sala/modifica">Modifica la pianta</Link> · </>}
+          <Link href={`/app?data=${date}`}>Elenco prenotazioni</Link>
         </p>
       </aside>
     </div>

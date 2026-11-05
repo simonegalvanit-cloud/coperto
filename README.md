@@ -62,6 +62,19 @@ it respects the minimum notice and booking window, and the day isn't a closure.
 - **Waitlist**: walk-ins added at the door with how long they've waited, "Chiama", "Avvisa", and "Fai sedere" by tapping a free table. Online, a guest who finds a day full can ask to be emailed; any cancellation or no-show emails the waiting guests whose party now fits, with a link to that day.
 - **Reminders**: every morning (Vercel Cron, `vercel.json`) guests booked for tomorrow get an email to confirm ("Ci sarò") or cancel; staff see "Ci sarà". One reminder per booking, none for bookings made in the last two hours. On/off in settings, plus a button to send them now.
 
+### Team and accounts
+
+| Page | What it does |
+| --- | --- |
+| `/app/team` | Invite people by email as **Responsabile** (everything but the account and other managers) or **Sala** (bookings, room, waitlist, guests; no settings, no export, no deleting guests). Change roles, remove someone (their access ends at once), hand the restaurant over to a manager. A manager can only add or remove Sala staff. |
+| `/team/<restaurant>` | The restaurant's own staff login page, to bookmark on the room's tablet or a waiter's phone. |
+| `/invito/<code>` | Accept an invitation (valid 7 days): pick a name and password, or use an existing Coperto password if already on another team. |
+| `/app/account` | Name, password (changing it logs out other devices), switch between restaurants, leave a team. The owner downloads all the restaurant's data (JSON) and can delete the restaurant: password plus its name typed out; accounts of people on no other team go too. |
+| `/password-dimenticata` | Emails a one-hour, single-use link to set a new password. Same answer whatever the email, so it doesn't reveal who has an account. |
+| `/termini`, `/privacy`, `/cookie`, `/dpa` | Terms of Service, Coperto's privacy policy, cookie policy, and the data processing agreement (GDPR art. 28). Accepted at signup; existing owners get a banner to accept. Company details to fill in: `src/lib/legal.ts`. |
+
+Every booking entered by staff records who entered it ("Inserita da Luca").
+
 ## Try it on your computer
 
 You need [Node.js 22](https://nodejs.org). Then, in this folder:

@@ -7,7 +7,7 @@ import { FloorEditor } from "./FloorEditor";
 export const metadata: Metadata = { title: "Disegna il locale" };
 
 export default async function EditFloorPage() {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("settings");
   const plan = await loadPlan(restaurant.id);
   return (
     <>

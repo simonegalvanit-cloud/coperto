@@ -8,6 +8,7 @@ import type { Reservation } from "@/db/schema";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { requireAccount } from "@/lib/auth";
+import { can } from "@/lib/roles";
 import { formatPhone } from "@/lib/contact";
 import { guestCounts } from "@/lib/guests";
 import { capitalize, formatDate, nowIn } from "@/lib/time";
@@ -28,7 +29,7 @@ const SOURCE: Record<string, string> = { online: "online", staff: "registrato da
 const when = (d: Date) => new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeZone: "Europe/Rome" }).format(d);
 
 export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]">) {
-  const { restaurant } = await requireAccount();
+  const { restaurant, role } = await requireAccount();
   const id = z.uuid().safeParse((await params).id);
   if (!id.success) notFound();
   const db = await getDb();
@@ -159,6 +160,7 @@ export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]"
               </details>
             )}
           </div>
+          {can(role, "guests") && (
           <form action={deleteGuest} className="stack" style={{ gap: 6, borderTop: "1.5px solid var(--ink)", paddingTop: 14 }}>
             <input type="hidden" name="id" value={guest.id} />
             <p className="small muted">Se l’ospite chiede di essere dimenticato (GDPR), elimina la scheda: le sue prenotazioni restano solo come numeri, senza nome né contatti.</p>
@@ -168,6 +170,7 @@ export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]"
               </ConfirmButton>
             </div>
           </form>
+          )}
         </aside>
       </div>
     </>

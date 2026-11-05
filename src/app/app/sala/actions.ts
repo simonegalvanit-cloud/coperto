@@ -80,7 +80,7 @@ export type FloorPlanInput = z.input<typeof planSchema>;
  * are rewritten, and each table's zone is worked out from where it sits. Removed tables' bookings become unassigned.
  */
 export async function saveFloorPlan(input: unknown): Promise<FloorResult> {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("settings");
   const parsed = planSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const { floors: plan, combos } = parsed.data;
@@ -241,6 +241,7 @@ async function seatNow(
   restaurant: Restaurant,
   tableId: string,
   party: { partySize: number; guestName: string; guestPhone?: string; guestEmail?: string; notes?: string },
+  createdBy: string,
 ): Promise<FloorResult> {
   const table = await ownTable(restaurant.id, z.uuid().parse(tableId));
   if (!table) return { error: "Tavolo non trovato." };
@@ -261,6 +262,7 @@ async function seatNow(
   };
   await db.insert(schema.reservations).values({
     ...contact,
+    createdBy,
     date: now.date,
     time: fromMinutes(now.minutes - (now.minutes % 5)),
     durationMinutes: restaurant.durationMinutes,
@@ -279,8 +281,8 @@ async function seatNow(
 
 /** Seats a party without a booking at a table, right now. */
 export async function seatWalkIn(tableId: string, partySize: number, name: string): Promise<FloorResult> {
-  const { restaurant } = await requireAccount();
-  const result = await seatNow(restaurant, tableId, { partySize, guestName: name });
+  const { restaurant, user } = await requireAccount();
+  const result = await seatNow(restaurant, tableId, { partySize, guestName: name }, user.id);
   revalidatePath("/app", "layout");
   return result;
 }
@@ -345,7 +347,7 @@ export async function leaveWaitlist(id: string): Promise<FloorResult> {
 
 /** Seats someone from the waitlist at a table now. */
 export async function seatFromWaitlist(id: string, tableId: string): Promise<FloorResult> {
-  const { restaurant } = await requireAccount();
+  const { restaurant, user } = await requireAccount();
   const entry = await ownEntry(restaurant.id, id);
   if (!entry) return { error: "Non trovato in lista d’attesa." };
   const result = await seatNow(restaurant, tableId, {
@@ -354,7 +356,7 @@ export async function seatFromWaitlist(id: string, tableId: string): Promise<Flo
     guestPhone: entry.phone,
     guestEmail: entry.email,
     notes: entry.notes,
-  });
+  }, user.id);
   if (result?.error) return result;
   const db = await getDb();
   await db.update(schema.waitlist).set({ status: "seated" }).where(eq(schema.waitlist.id, entry.id));

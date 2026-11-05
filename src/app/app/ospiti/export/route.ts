@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { getCurrentAccount } from "@/lib/auth";
+import { can } from "@/lib/roles";
 import { guestCounts } from "@/lib/guests";
 import { nowIn } from "@/lib/time";
 
@@ -20,6 +21,7 @@ const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
 export async function GET() {
   const account = await getCurrentAccount();
   if (!account) return new Response("Non autorizzato", { status: 401 });
+  if (!can(account.role, "guests")) return new Response("Solo titolare e responsabili possono esportare gli ospiti.", { status: 403 });
   const { restaurant } = account;
   const db = await getDb();
   const guests = await db.select().from(schema.guests).where(eq(schema.guests.restaurantId, restaurant.id)).orderBy(asc(schema.guests.name));

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { and, count, desc, eq, ilike, isNotNull, isNull, or } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { requireAccount } from "@/lib/auth";
+import { can } from "@/lib/roles";
 import { formatPhone, normalizePhone } from "@/lib/contact";
 import { guestCounts } from "@/lib/guests";
 import { formatDate } from "@/lib/time";
@@ -12,7 +13,8 @@ export const metadata: Metadata = { title: "Ospiti" };
 const PAGE = 100;
 
 export default async function GuestsPage({ searchParams }: PageProps<"/app/ospiti">) {
-  const { restaurant } = await requireAccount();
+  const { restaurant, role } = await requireAccount();
+  const admin = can(role, "guests");
   const q = String((await searchParams).q ?? "").trim().slice(0, 80);
 
   const db = await getDb();
@@ -40,15 +42,17 @@ export default async function GuestsPage({ searchParams }: PageProps<"/app/ospit
     <>
       <div className="spread">
         <h1>Ospiti</h1>
-        <a className="btn btn-small" href="/app/ospiti/export" download>
-          Esporta (CSV)
-        </a>
+        {admin && (
+          <a className="btn btn-small" href="/app/ospiti/export" download>
+            Esporta (CSV)
+          </a>
+        )}
       </div>
       <p className="small muted">
         Compaiono solo gli ospiti che hanno scelto di essere ricordati, prenotando online o dicendolo a voi. Chi non
         lo sceglie prenota normalmente, ma non ha una scheda.
       </p>
-      {legacy > 0 && (
+      {admin && legacy > 0 && (
         <p className="panel">
           <strong>{legacy} {legacy === 1 ? "scheda" : "schede"} senza consenso</strong>, create prima che servisse. Sono spente:
           non compaiono sulle prenotazioni. <Link href="/app/ospiti/senza-consenso">Decidi cosa farne</Link>
