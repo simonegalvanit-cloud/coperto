@@ -6,6 +6,7 @@ import { LiveSync } from "@/components/LiveSync";
 import { DayJump } from "@/components/DayJump";
 import { changeStamp } from "@/lib/changes";
 import { requireAccount } from "@/lib/auth";
+import { can } from "@/lib/roles";
 import { closedAreas, loadPlan } from "@/lib/plan";
 import { guestInfoFor } from "@/lib/guests";
 import { getWaitlist } from "@/lib/waitlist";
@@ -16,7 +17,7 @@ import { FloorLive } from "./FloorLive";
 export const metadata: Metadata = { title: "Sala" };
 
 export default async function FloorPage({ searchParams }: PageProps<"/app/sala">) {
-  const { restaurant } = await requireAccount();
+  const { restaurant, role } = await requireAccount();
   const now = nowIn(restaurant.timezone);
   const param = (await searchParams).data;
   const date = typeof param === "string" && isDate(param) ? param : now.date;
@@ -46,9 +47,13 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
           Disegna piani, sale, cucina, bar e tavoli come sono davvero: poi qui vedi chi è seduto, chi sta arrivando e quale tavolo si libera, per tutto il
           servizio.
         </p>
-        <p>
-          <Link className="btn btn-fill" href="/app/sala/modifica">Disegna il locale</Link>
-        </p>
+        {can(role, "settings") ? (
+          <p>
+            <Link className="btn btn-fill" href="/app/sala/modifica">Disegna il locale</Link>
+          </p>
+        ) : (
+          <p className="muted">La pianta non è ancora stata disegnata: può farlo il titolare o un responsabile.</p>
+        )}
       </div>
     );
   }
@@ -111,6 +116,7 @@ export default async function FloorPage({ searchParams }: PageProps<"/app/sala">
         guestInfo={guestInfo}
         waitlist={waitlist}
         bookings={bookings}
+        canEditPlan={can(role, "settings")}
       />
     </>
   );

@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Schede senza consenso" };
 
 /** Profiles made before consent existed: switched off until staff record the guest's yes, or delete them. */
 export default async function UnconsentedPage() {
-  const { restaurant } = await requireAccount();
+  const { restaurant } = await requireAccount("guests");
   const db = await getDb();
   const g = schema.guests;
   const guests = await db

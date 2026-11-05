@@ -6,9 +6,11 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { randomUUID } from "node:crypto";
-import { endSession, hashPassword, newSession, setSessionCookie, startSession, verifyPassword } from "@/lib/auth";
+import { endSession, endSessionsOf, getDevice, hashPassword, newSession, setSessionCookie, startSession, verifyPassword } from "@/lib/auth";
+import { resolvePasswordReset, sendPasswordReset } from "@/lib/team";
 import { slugify, uniqueSlug } from "@/lib/restaurant";
 import type { ActionResult } from "@/components/ActionForm";
+import { TERMS_VERSION } from "@/lib/legal";
 
 const signupSchema = z.object({
   restaurant: z.string().trim().min(2, "Scrivi il nome del ristorante.").max(80),
@@ -16,6 +18,7 @@ const signupSchema = z.object({
   name: z.string().trim().min(2, "Scrivi il tuo nome.").max(80),
   email: z.email("Controlla l’email.").trim().toLowerCase(),
   password: z.string().min(8, "La password deve avere almeno 8 caratteri.").max(200),
+  terms: z.literal("on", "Per continuare accetta i Termini di servizio e l’Accordo sul trattamento dei dati."),
 });
 
 // A sensible starting week: closed Monday, lunch and dinner the other days.
@@ -65,8 +68,11 @@ export async function signup(_: ActionResult, data: FormData): Promise<ActionRes
             values (${userId}::uuid, ${input.email}, ${input.name}, ${passwordHash})
           ),
           r as (
-            insert into ${schema.restaurants} (id, owner_id, slug, name, city, notify_email)
-            values (${restaurantId}::uuid, ${userId}::uuid, ${slug}, ${input.restaurant}, ${input.city}, ${input.email})
+            insert into ${schema.restaurants} (id, owner_id, slug, name, city, notify_email, terms_accepted_at, terms_version)
+            values (${restaurantId}::uuid, ${userId}::uuid, ${slug}, ${input.restaurant}, ${input.city}, ${input.email}, now(), ${TERMS_VERSION})
+          ),
+          m as (
+            insert into ${schema.members} (restaurant_id, user_id, role) values (${restaurantId}::uuid, ${userId}::uuid, 'owner')
           ),
           h as (
             insert into ${schema.serviceHours} (restaurant_id, weekday, name, start_time, end_time) values ${hours}
@@ -98,15 +104,52 @@ export async function signup(_: ActionResult, data: FormData): Promise<ActionRes
 // Compared against when the email is unknown, so both cases take the same time.
 const DUMMY_HASH = hashPassword("not-a-real-password");
 
+/**
+ * Logs in from /accedi, or from a restaurant's staff page (/team/<slug>, with the slug in the form): there the
+ * session opens on that restaurant, and someone not on its team is told so.
+ */
 export async function login(_: ActionResult, data: FormData): Promise<ActionResult> {
   const email = String(data.get("email") ?? "").trim().toLowerCase();
   const password = String(data.get("password") ?? "");
+  const slug = String(data.get("slug") ?? "");
   const db = await getDb();
   const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
   const valid = await verifyPassword(password, user?.passwordHash ?? (await DUMMY_HASH));
   if (!user || !valid) return { error: "Email o password non corretti." };
-  await startSession(user.id);
+  const teams = await db
+    .select({ restaurantId: schema.members.restaurantId, slug: schema.restaurants.slug, name: schema.restaurants.name })
+    .from(schema.members)
+    .innerJoin(schema.restaurants, eq(schema.restaurants.id, schema.members.restaurantId))
+    .where(eq(schema.members.userId, user.id));
+  if (teams.length === 0) return { error: "Questo account non fa più parte di nessun ristorante. Chiedi al titolare di invitarti di nuovo." };
+  const here = slug ? teams.find((t) => t.slug === slug) : undefined;
+  if (slug && !here) return { error: "Questo account non fa parte dello staff di questo ristorante." };
+  await startSession(user.id, here?.restaurantId ?? null);
   // A new account on this device: drop any pages the browser kept from the previous one.
+  revalidatePath("/", "layout");
+  redirect("/app");
+}
+
+export async function requestPasswordReset(_: ActionResult, data: FormData): Promise<ActionResult> {
+  const email = z.email().safeParse(String(data.get("email") ?? "").trim().toLowerCase());
+  if (!email.success) return { error: "Controlla l’email." };
+  await sendPasswordReset(email.data);
+  // The same answer whether or not the address has an account, so the form can't be used to find out.
+  return { ok: `Se ${email.data} ha un account Coperto, ti abbiamo mandato un link per scegliere una nuova password. Vale un’ora.` };
+}
+
+/** Sets the new password, uses up the link, logs out every other device and logs in here. */
+export async function resetPassword(_: ActionResult, data: FormData): Promise<ActionResult> {
+  const token = String(data.get("token") ?? "");
+  const password = String(data.get("password") ?? "");
+  const user = await resolvePasswordReset(token);
+  if (!user) return { error: "Il link è scaduto o è già stato usato. Chiedine uno nuovo." };
+  if (password.length < 8) return { error: "La password deve avere almeno 8 caratteri." };
+  const db = await getDb();
+  await db.update(schema.users).set({ passwordHash: await hashPassword(password) }).where(eq(schema.users.id, user.id));
+  await db.delete(schema.passwordResets).where(eq(schema.passwordResets.userId, user.id));
+  await endSessionsOf(user.id);
+  await startSession(user.id);
   revalidatePath("/", "layout");
   redirect("/app");
 }
@@ -114,5 +157,5 @@ export async function login(_: ActionResult, data: FormData): Promise<ActionResu
 export async function logout() {
   await endSession();
   revalidatePath("/", "layout");
-  redirect("/accedi");
+  redirect((await getDevice()) ? "/sala" : "/accedi");
 }

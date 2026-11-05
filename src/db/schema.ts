@@ -14,9 +14,10 @@ import {
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
-  email: text("email").notNull().unique(),
+  // Null for someone who only uses a PIN on the restaurant's tablet (a waiter added without an email).
+  email: text("email").unique(),
   name: text("name").notNull(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -27,6 +28,35 @@ export const sessions = pgTable("sessions", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  // The restaurant this login is working in, for someone on the team of more than one. Null: their first.
+  restaurantId: uuid("restaurant_id").references(() => restaurants.id, { onDelete: "set null" }),
+  // Set for a session opened with a PIN on a restaurant's tablet; it ends when the tablet is revoked.
+  deviceId: text("device_id").references(() => devices.id, { onDelete: "cascade" }),
+});
+
+/**
+ * A tablet or computer the restaurant has authorised as its room device: on it, team members get in with their
+ * PIN. The id is the hash of the long-lived cookie that marks the device.
+ */
+export const devices = pgTable("devices", {
+  id: text("id").primaryKey(),
+  restaurantId: uuid("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+});
+
+/** One-time links to set a new password; only the hash is stored, and they last an hour. */
+export const passwordResets = pgTable("password_resets", {
+  id: text("id").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const restaurants = pgTable("restaurants", {
@@ -55,8 +85,55 @@ export const restaurants = pgTable("restaurants", {
   bookingOpen: boolean("booking_open").notNull().default(true),
   // Email guests the day before to confirm or cancel.
   remindersEnabled: boolean("reminders_enabled").notNull().default(true),
+  // When the owner accepted the Terms of Service and the data processing agreement, and which version.
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  termsVersion: text("terms_version"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Titolare (the owner who pays: everything), Responsabile (runs the place: everything but the account and
+// other managers), Sala (bookings, room, waitlist, guests).
+export const memberRole = pgEnum("member_role", ["owner", "manager", "staff"]);
+
+/** Who works at a restaurant, and as what. The owner is a member too, the one restaurants.ownerId points at. */
+export const members = pgTable(
+  "members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: memberRole("role").notNull(),
+    // A 6-digit PIN for the restaurant's tablets, hashed like a password. Per restaurant: it goes with the membership.
+    pinHash: text("pin_hash"),
+    // Wrong PINs in a row; at 5 the PIN is locked for a quarter of an hour.
+    pinFailures: integer("pin_failures").notNull().default(0),
+    pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("members_restaurant_user_idx").on(t.restaurantId, t.userId), index("members_user_idx").on(t.userId)],
+);
+
+/** An emailed invitation to join a restaurant's team; only the hash of the link is stored, it lasts a week. */
+export const invites = pgTable(
+  "invites",
+  {
+    id: text("id").primaryKey(),
+    restaurantId: uuid("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    role: memberRole("role").notNull(),
+    invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("invites_restaurant_email_idx").on(t.restaurantId, t.email)],
+);
 
 // Times are local "HH:MM" strings in the restaurant's timezone; end is the last arrival time.
 export const serviceHours = pgTable(
@@ -387,6 +464,8 @@ export const reservations = pgTable(
     guestConfirmedAt: timestamp("guest_confirmed_at", { withTimezone: true }),
     // Secret in the guest's link to view or cancel the booking without an account.
     manageToken: text("manage_token").notNull().unique(),
+    // The team member who entered it (null for online bookings, or if they've since left).
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -409,3 +488,4 @@ export type TableCombination = typeof tableCombinations.$inferSelect;
 export type Guest = typeof guests.$inferSelect;
 export type WaitlistEntry = typeof waitlist.$inferSelect;
 export type ReservationStatus = (typeof reservationStatus.enumValues)[number];
+export type MemberRole = (typeof memberRole.enumValues)[number];
