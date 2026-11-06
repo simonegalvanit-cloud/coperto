@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { deleteOldApplications } from "@/lib/careers";
 import { cleanupRetention } from "@/lib/consent";
 import { sendDueReminders } from "@/lib/reminders";
 
@@ -14,5 +15,6 @@ export async function GET(req: NextRequest) {
   }
   const sent = await sendDueReminders();
   const cleanup = await cleanupRetention();
-  return NextResponse.json({ sent, ...cleanup });
+  const applicationsDeleted = await deleteOldApplications();
+  return NextResponse.json({ sent, ...cleanup, applicationsDeleted });
 }

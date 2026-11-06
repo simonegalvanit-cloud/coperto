@@ -16,7 +16,7 @@ export const TERMS_DATE = "5 novembre 2026";
 
 /** Where Coperto's service providers keep data (sub-processors), as listed in the DPA and privacy policy. */
 export const SUBPROCESSORS = [
-  { name: "Vercel Inc.", what: "Hosting dell’applicazione", where: "Server in UE (Francoforte); società negli USA, trasferimenti coperti da Clausole contrattuali tipo e Data Privacy Framework" },
+  { name: "Vercel Inc.", what: "Hosting dell’applicazione", where: "Server in UE (Dublino); società negli USA, trasferimenti coperti da Clausole contrattuali tipo e Data Privacy Framework" },
   { name: "Supabase Inc.", what: "Database", where: "Server nella regione scelta in UE; società negli USA, trasferimenti coperti da Clausole contrattuali tipo" },
   { name: "Resend (Plus Five Five Inc.)", what: "Invio delle email (conferme, promemoria, link)", where: "USA, trasferimenti coperti da Clausole contrattuali tipo" },
 ];

@@ -52,6 +52,10 @@
   header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-top: 18px; padding-bottom: 18px; }
   .logo { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
   .links { display: flex; gap: 32px; font-size: 15px; }
+  .head-actions { display: flex; align-items: center; gap: 14px; }
+  .phone-login, .menu-btn, .phone-only, .plan-cards { display: none; }
+  .menu-btn { background: none; border: 1.5px solid var(--ink); color: var(--ink); width: 44px; height: 44px; align-items: center; justify-content: center; cursor: pointer; border-radius: 2px; }
+  .phone-login { font-weight: 600; font-size: 16px; text-decoration: underline; text-underline-offset: 4px; padding: 10px 4px; }
 
   /* Hero */
   .hero { display: flex; flex-wrap: wrap; gap: clamp(28px, 3vw, 48px); padding-top: clamp(24px, 3vw, 40px); align-items: flex-start; }
@@ -176,6 +180,27 @@
 
   @media (max-width: 860px) {
     .links { display: none; }
+    header .wrap { gap: 12px; }
+    .phone-login { display: inline-block; }
+    .menu-btn { display: inline-flex; }
+    .head-demo { display: none; }
+    .desk-only { display: none; }
+    .phone-only { display: block; }
+    header.open .links { display: flex; flex-direction: column; gap: 0; position: absolute; top: 100%; left: 0; right: 0; background: var(--ground); border-bottom: 1.5px solid var(--ink); padding: 8px var(--pad) 16px; font-size: 18px; }
+    header.open .links a { padding: 12px 0; border-bottom: 1px solid rgba(27, 42, 107, .15); }
+    header.open .links a:last-child { border-bottom: 0; font-weight: 600; }
+  }
+  @media (max-width: 820px) {
+    .schedule { display: none; }
+    .plan-cards { display: grid; gap: 14px; margin-top: 28px; }
+    .plan-card { border: 2px solid var(--ink); background: var(--paper); padding: 20px; }
+    .plan-card.pick { box-shadow: 6px 6px 0 var(--ink); }
+    .plan-card h3 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+    .plan-card .sub { font-size: 15px; margin-top: 2px; }
+    .plan-card .price { font-size: 20px; font-weight: 700; margin: 14px 0 10px; }
+    .plan-card ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: 15px; }
+    .plan-card li { display: flex; gap: 10px; align-items: baseline; }
+    .plan-card li::before { content: ""; flex: none; width: 10px; height: 10px; background: var(--ink); }
     .dim { grid-template-columns: 1fr; gap: 32px; padding-left: 28px; }
     .dim::before { top: 0; bottom: 0; left: 6px; right: auto; border-top: 0; border-left: 1.5px solid var(--ink); }
     .dim::after { display: none; }
@@ -276,13 +301,21 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="2" width="20" height="20"/><circle cx="12" cy="12" r="5"/></svg>
       coperto
     </a>
-    <nav class="links" aria-label="Principale">
+    <nav class="links" id="menu" aria-label="Principale">
       <a href="#serata">Come funziona</a>
       <a href="#ospiti">Ospiti</a>
       <a href="#prezzi">Prezzi</a>
-      <a href="/accedi">Accedi</a>
+      <a href="/accedi" class="desk-only">Accedi</a>
+      <a href="/registrati" class="phone-only">Prova gratis 14 giorni</a>
+      <a href="#demo" class="phone-only">Prenota una demo</a>
     </nav>
-    <a class="btn btn-line" href="#demo">Prenota una demo</a>
+    <div class="head-actions">
+      <a class="phone-login" href="/accedi">Accedi</a>
+      <a class="btn btn-line head-demo" href="#demo">Prenota una demo</a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="menu" aria-label="Apri il menu">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+      </button>
+    </div>
   </div>
   <div class="ruler" aria-hidden="true"><i id="rulerFill"></i></div>
 </header>
@@ -410,7 +443,7 @@
         <div class="field">
           <label for="fee">La tua commissione per coperto</label>
           <div class="money" style="margin-top:10px">
-            <input id="fee" type="number" min="0" step="0.25" value="2.00" inputmode="decimal">
+            <input id="fee" type="number" min="0" max="20" step="0.25" value="2.00" inputmode="decimal">
             <span>€</span>
           </div>
           <p class="note" style="margin-top:10px">La trovi nel contratto o nella fattura della tua piattaforma attuale.</p>
@@ -535,13 +568,63 @@
     </div>
     <div class="foot-cols">
       <div><b>Prodotto</b><a href="#serata">Come funziona</a><a href="#funzioni">Funzioni</a><a href="#prezzi">Prezzi</a></div>
-      <div><b>Azienda</b><a href="#top">Chi siamo</a><a href="#top">Lavora con noi</a><a href="#demo">Contatti</a></div>
+      <div><b>Azienda</b><a href="/chi-siamo">Chi siamo</a><a href="/lavora-con-noi">Lavora con noi</a><a href="#demo">Contatti</a></div>
       <div><b>Legale</b><a href="/privacy">Privacy</a><a href="/termini">Termini</a><a href="/cookie">Cookie</a><a href="/dpa">Trattamento dati (DPA)</a></div>
     </div>
   </div>
 </footer>
 
 <script>
+  /* ---------- Phone menu ---------- */
+  (() => {
+    const header = document.querySelector('header');
+    const btn = document.querySelector('.menu-btn');
+    const set = (open) => {
+      header.classList.toggle('open', open);
+      btn.setAttribute('aria-expanded', String(open));
+      btn.setAttribute('aria-label', open ? 'Chiudi il menu' : 'Apri il menu');
+    };
+    btn.addEventListener('click', () => set(!header.classList.contains('open')));
+    document.querySelectorAll('#menu a').forEach((a) => a.addEventListener('click', () => set(false)));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') set(false); });
+  })();
+
+  /* ---------- Plans as cards on phones, from the same table ---------- */
+  (() => {
+    const table = document.querySelector('#prezzi table');
+    if (!table) return;
+    const heads = [...table.querySelectorAll('thead th')].slice(1);
+    const rows = [...table.querySelectorAll('tbody tr')];
+    const cards = document.createElement('div');
+    cards.className = 'plan-cards';
+    heads.forEach((th, i) => {
+      const card = document.createElement('div');
+      card.className = 'plan-card' + (th.classList.contains('col-pick') ? ' pick' : '');
+      const sub = th.querySelector('span')?.textContent ?? '';
+      const name = th.childNodes[0].textContent.trim();
+      const h = document.createElement('h3'); h.textContent = name;
+      const p = document.createElement('p'); p.className = 'sub'; p.textContent = sub;
+      card.append(h, p);
+      const list = document.createElement('ul');
+      rows.forEach((tr) => {
+        const label = tr.querySelector('th').textContent.trim();
+        const cell = tr.querySelectorAll('td')[i];
+        if (!cell) return;
+        if (tr.classList.contains('price')) {
+          const price = document.createElement('p'); price.className = 'price';
+          const amount = cell.querySelector('.pr');
+          price.textContent = amount ? `${Number(amount.dataset.price).toLocaleString('it-IT', { minimumFractionDigits: 2 })} € al mese` : cell.textContent.trim();
+          card.append(price);
+        } else if (cell.querySelector('.yes')) {
+          const li = document.createElement('li'); li.textContent = label; list.append(li);
+        }
+      });
+      card.append(list);
+      cards.append(card);
+    });
+    document.querySelector('#prezzi .schedule').after(cards);
+  })();
+
   /* ---------- Floor plan ---------- */
   // Booking slots are 15-minute steps from 19:00 (0) to 23:00 (16).
   const tables = [
@@ -643,7 +726,9 @@
   const money = (v) => eur.format(Math.round(v)) + ' €';
   function renderCalc() {
     const c = +covers.value;
-    const f = Math.max(0, parseFloat(String(fee.value).replace(',', '.')) || 0);
+    // Commissions are a few euros per cover: anything beyond 20 € (or "1e400", or letters) is a typo, not a number to show.
+    const raw = parseFloat(String(fee.value).replace(',', '.'));
+    const f = Number.isFinite(raw) ? Math.min(20, Math.max(0, raw)) : 0;
     const monthly = c * f;
     document.getElementById('coversOut').textContent = eur.format(c);
     tween(document.getElementById('monthly'), monthly, money);
@@ -660,6 +745,12 @@
   }
   covers.addEventListener('input', renderCalc);
   fee.addEventListener('input', renderCalc);
+  // Leaving the field shows the value actually used.
+  fee.addEventListener('change', () => {
+    const raw = parseFloat(String(fee.value).replace(',', '.'));
+    fee.value = (Number.isFinite(raw) ? Math.min(20, Math.max(0, raw)) : 0).toFixed(2);
+    renderCalc();
+  });
   renderCalc();
 
   /* ---------- Scroll ruler ---------- */

@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
     // Fully prefetched pages (the menu links) last 60 s; pages just visited 30 s. Live data still refreshes
     // in the background (see LiveSync).
     staleTimes: { dynamic: 30, static: 60 },
+    // Room for a CV (4 MB) on the "Lavora con noi" form; Vercel refuses requests over 4.5 MB anyway.
+    serverActions: { bodySizeLimit: "4.4mb" },
   },
   async rewrites() {
     return {
