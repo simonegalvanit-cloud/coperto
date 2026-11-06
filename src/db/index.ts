@@ -13,8 +13,11 @@ async function connect(): Promise<DB> {
   if (url) {
     const { drizzle } = await import("drizzle-orm/postgres-js");
     const postgres = (await import("postgres")).default;
-    // prepare: false keeps it compatible with Supabase's transaction pooler.
-    return drizzle(postgres(url, { prepare: false }), { schema });
+    // Supabase's transaction pooler (port 6543) can't keep prepared statements, so there every query is
+    // described first: two round trips each. Any other connection prepares them: one round trip, and queries
+    // sent together travel together.
+    const prepare = new URL(url).port !== "6543";
+    return drizzle(postgres(url, { prepare }), { schema });
   }
   if (process.env.VERCEL) {
     // Vercel's disk is read-only and wiped between requests: an embedded database there would lose every booking.

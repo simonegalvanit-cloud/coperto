@@ -10,6 +10,7 @@ import { endSession, endSessionsOf, getDevice, hashPassword, newSession, setSess
 import { resolvePasswordReset, sendPasswordReset } from "@/lib/team";
 import { slugify, uniqueSlug } from "@/lib/restaurant";
 import type { ActionResult } from "@/components/ActionForm";
+import { databaseHealth } from "@/lib/health";
 import { TERMS_VERSION } from "@/lib/legal";
 
 const signupSchema = z.object({
@@ -45,7 +46,12 @@ export async function signup(_: ActionResult, data: FormData): Promise<ActionRes
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const input = parsed.data;
 
-  const db = await getDb();
+  let db;
+  try {
+    db = await getDb();
+  } catch (err) {
+    return explainFailure("signup", err);
+  }
   const passwordHash = await hashPassword(input.password);
   const userId = randomUUID();
   const restaurantId = randomUUID();
@@ -92,7 +98,7 @@ export async function signup(_: ActionResult, data: FormData): Promise<ActionRes
         slug = await uniqueSlug(input.restaurant);
         continue;
       }
-      throw err;
+      return explainFailure("signup", err);
     }
   }
 
@@ -112,22 +118,36 @@ export async function login(_: ActionResult, data: FormData): Promise<ActionResu
   const email = String(data.get("email") ?? "").trim().toLowerCase();
   const password = String(data.get("password") ?? "");
   const slug = String(data.get("slug") ?? "");
-  const db = await getDb();
-  const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
-  const valid = await verifyPassword(password, user?.passwordHash ?? (await DUMMY_HASH));
-  if (!user || !valid) return { error: "Email o password non corretti." };
-  const teams = await db
-    .select({ restaurantId: schema.members.restaurantId, slug: schema.restaurants.slug, name: schema.restaurants.name })
-    .from(schema.members)
-    .innerJoin(schema.restaurants, eq(schema.restaurants.id, schema.members.restaurantId))
-    .where(eq(schema.members.userId, user.id));
-  if (teams.length === 0) return { error: "Questo account non fa più parte di nessun ristorante. Chiedi al titolare di invitarti di nuovo." };
-  const here = slug ? teams.find((t) => t.slug === slug) : undefined;
-  if (slug && !here) return { error: "Questo account non fa parte dello staff di questo ristorante." };
-  await startSession(user.id, here?.restaurantId ?? null);
+  try {
+    const db = await getDb();
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
+    const valid = await verifyPassword(password, user?.passwordHash ?? (await DUMMY_HASH));
+    if (!user || !valid) return { error: "Email o password non corretti." };
+    const teams = await db
+      .select({ restaurantId: schema.members.restaurantId, slug: schema.restaurants.slug, name: schema.restaurants.name })
+      .from(schema.members)
+      .innerJoin(schema.restaurants, eq(schema.restaurants.id, schema.members.restaurantId))
+      .where(eq(schema.members.userId, user.id));
+    if (teams.length === 0) return { error: "Questo account non fa più parte di nessun ristorante. Chiedi al titolare di invitarti di nuovo." };
+    const here = slug ? teams.find((t) => t.slug === slug) : undefined;
+    if (slug && !here) return { error: "Questo account non fa parte dello staff di questo ristorante." };
+    await startSession(user.id, here?.restaurantId ?? null);
+  } catch (err) {
+    return explainFailure("login", err);
+  }
   // A new account on this device: drop any pages the browser kept from the previous one.
   revalidatePath("/", "layout");
   redirect("/app");
+}
+
+/**
+ * When logging in or signing up fails on the server, says why in words (database not set, unreachable or not
+ * updated) instead of a blank error page; the details go to the server log.
+ */
+async function explainFailure(what: string, err: unknown): Promise<ActionResult> {
+  console.error(`[${what}] failed`, err);
+  const health = await databaseHealth();
+  return { error: health.ok ? "Qualcosa è andato storto sul server. Riprova tra un attimo." : `Problema del server: ${health.message}` };
 }
 
 export async function requestPasswordReset(_: ActionResult, data: FormData): Promise<ActionResult> {
