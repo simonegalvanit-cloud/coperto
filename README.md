@@ -100,7 +100,7 @@ and emails are printed in the terminal instead of being sent.
 
 ## Put it online
 
-1. **Database**: in your Vercel project open **Storage → Create Database → Supabase**, choose the *Frankfurt* region
+1. **Database**: in your Vercel project open **Storage → Create Database → Supabase**, choose the *Ireland (eu-west-1)* region
    and connect it to all environments. Vercel adds the database address by itself.
    (Or create the project on [supabase.com](https://supabase.com) and add its *Transaction pooler* connection string
    as `DATABASE_URL`.)
@@ -123,8 +123,8 @@ Every deploy applies database changes automatically before building.
 database round trip takes. Every page makes a few, so anything above ~40 ms means the server and database are far
 apart: put them in the same region.
 
-The app's server code runs in Vercel's Frankfurt region (`regions` in `vercel.json`), next to a Supabase project in
-Frankfurt (`eu-central-1`). If your database is in another region, change `fra1` to the nearest
+The app's server code runs in Vercel's Dublin region (`regions` in `vercel.json`), next to a Supabase project in
+Ireland (`eu-west-1`). If your database is in another region, change `dub1` to the nearest
 [Vercel region](https://vercel.com/docs/regions): every page makes a few database round trips, so distance adds up fast.
 
 ## For developers
