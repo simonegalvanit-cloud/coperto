@@ -31,8 +31,14 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((toUtcDate(to).getTime() - toUtcDate(from).getTime()) / 86_400_000);
 }
 
-export function isDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && toUtcDate(value).toISOString().slice(0, 10) === value;
+/**
+ * A real calendar day as "YYYY-MM-DD": "2026-02-30" or "2026-13-45" are not. Never throws, whatever it's given,
+ * so a mangled link gets a clear answer instead of a server error.
+ */
+export function isDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = toUtcDate(value);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
 export function isTime(value: string): boolean {

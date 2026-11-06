@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
-import { createOnlineReservation, getRestaurantBySlug, getReservationByToken } from "@/lib/restaurant";
+import { createOnlineReservation, getRestaurantBySlug, getReservationByToken, type Unavailable } from "@/lib/restaurant";
+import type { Restaurant } from "@/db/schema";
 import { emailCancellation, emailGuestConfirmation, emailRestaurantNewBooking } from "@/lib/notifications";
 import { notifyWaitlist } from "@/lib/waitlist";
 import { daysBetween, formatDate, isDate, isTime, nowIn, toMinutes } from "@/lib/time";
@@ -43,13 +44,10 @@ export async function createBooking(slug: string, embed: boolean, _: BookingResu
     profile: remember === "on",
     marketing: remember === "on" && marketing === "on",
   });
-  if (!result.ok && result.duplicateAt) {
-    return {
-      error: `Con questa email o questo telefono c’è già una prenotazione alle ${result.duplicateAt} di quel giorno. Per cambiarla o cancellarla usa il link nell’email di conferma.`,
-    };
-  }
   if (!result.ok) {
-    return { unavailable: true, error: "Quell’orario è appena stato preso. Scegline un altro." };
+    const why = result.why;
+    // Only a time someone else took sends the guest back to pick again with fresh times.
+    return { unavailable: why.reason === "taken" || why.reason === "no_table", error: unavailableMessage(restaurant, parsed.data, why) };
   }
 
   // Emails go out after the guest already sees the confirmation page.
@@ -59,6 +57,45 @@ export async function createBooking(slug: string, embed: boolean, _: BookingResu
   });
   revalidatePath(`/p/${slug}`, "layout");
   redirect(`/p/${slug}/prenotazione/${result.reservation.manageToken}${embed ? "?embed=1" : ""}`);
+}
+
+const call = (r: Restaurant) => (r.phone ? `, oppure chiama il ristorante al ${r.phone}` : "");
+
+/** A notice period in words: 60 → "1 ora", 90 → "1 ora e 30 minuti", 2880 → "2 giorni". */
+function duration(minutes: number) {
+  const d = Math.floor(minutes / 1440);
+  const h = Math.floor((minutes % 1440) / 60);
+  const m = minutes % 60;
+  const parts = [
+    d ? (d === 1 ? "1 giorno" : `${d} giorni`) : "",
+    h ? (h === 1 ? "1 ora" : `${h} ore`) : "",
+    m ? `${m} minuti` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" e ") : "0 minuti";
+}
+
+/** What to tell a guest whose booking couldn't be made, in their terms. */
+function unavailableMessage(r: Restaurant, d: { date: string; time: string; partySize: number }, why: Unavailable): string {
+  switch (why.reason) {
+    case "duplicate":
+      return `Con questa email o questo telefono c’è già una prenotazione alle ${why.time} di quel giorno. Per cambiarla o cancellarla usa il link nell’email di conferma.`;
+    case "suspended":
+      return `${r.name} in questo momento non accetta prenotazioni online${call(r)}.`;
+    case "closed":
+      return `${r.name} è chiuso ${formatDate(d.date)}. Scegli un altro giorno.`;
+    case "past":
+      return "Quest’orario è già passato. Scegline un altro.";
+    case "too_soon":
+      return `Online si prenota con almeno ${duration(r.minNoticeMinutes)} di anticipo: scegli un orario più avanti${call(r)}.`;
+    case "too_far":
+      return `Si prenota al massimo ${r.maxDaysAhead} giorni prima. Scegli una data più vicina.`;
+    case "outside_hours":
+      return `Alle ${d.time} non si prenota. Orari di arrivo quel giorno: ${why.services.map((s) => `${s.name.toLowerCase()} ${s.startTime}–${s.endTime}`).join(", ")}.`;
+    case "no_table":
+      return `Online non c’è un tavolo per ${d.partySize === 1 ? "1 persona" : `${d.partySize} persone`} a quell’ora. Prova un altro orario${call(r)}.`;
+    case "taken":
+      return "Quell’orario è appena stato preso da qualcun altro. Scegline un altro.";
+  }
 }
 
 export type WaitResult = { error?: string; ok?: string } | null;

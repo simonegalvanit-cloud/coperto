@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   date,
   index,
   integer,
@@ -475,6 +476,27 @@ export const reservations = pgTable(
     index("reservations_restaurant_updated_idx").on(t.restaurantId, t.updatedAt),
   ],
 );
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/**
+ * Applications from the "Lavora con noi" page: Coperto's own hiring, not a restaurant's. The CV is kept in the
+ * database (a few MB at most) and deleted with the application, after 12 months at the latest.
+ */
+export const jobApplications = pgTable("job_applications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull().default(""),
+  role: text("role").notNull(),
+  city: text("city").notNull().default(""),
+  link: text("link").notNull().default(""),
+  message: text("message").notNull().default(""),
+  cvName: text("cv_name").notNull(),
+  cvType: text("cv_type").notNull(),
+  cv: bytea("cv").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export type Restaurant = typeof restaurants.$inferSelect;
 export type ServiceHour = typeof serviceHours.$inferSelect;

@@ -113,6 +113,8 @@ and emails are printed in the terminal instead of being sent.
 | `EMAIL_FROM` | e.g. `Coperto <prenotazioni@tuodominio.it>` |
 | `APP_URL` | Your public address, e.g. `https://coperto.it` |
 | `CRON_SECRET` | Any long random text: only Vercel's morning job can then trigger reminders and the privacy cleanup |
+| `CAREERS_EMAIL` | Where applications from "Lavora con noi" are emailed, CV attached (optional: they're also saved) |
+| `ADMIN_EMAILS` | Comma-separated emails of Coperto accounts that may read applications at `/admin/candidature` |
 
 The app reads the database address from `DATABASE_URL`, or from `POSTGRES_URL` as set by Vercel's Supabase and Neon integrations.
 Without any of the email variables, emails are written to Vercel's logs instead of being sent.

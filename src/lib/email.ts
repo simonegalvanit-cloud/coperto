@@ -1,6 +1,12 @@
 import "server-only";
 
-type Email = { to: string; subject: string; text: string; replyTo?: string };
+type Email = {
+  to: string;
+  subject: string;
+  text: string;
+  replyTo?: string;
+  attachments?: { filename: string; content: Buffer }[];
+};
 
 /**
  * Sends through Resend when RESEND_API_KEY and EMAIL_FROM are set.
@@ -11,7 +17,8 @@ export async function sendEmail(email: Email): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
   if (!key || !from) {
-    console.log(`\n[email] to: ${email.to}\n[email] subject: ${email.subject}\n${email.text}\n`);
+    const files = email.attachments?.map((a) => `\n[email] attachment: ${a.filename} (${a.content.length} bytes)`).join("") ?? "";
+    console.log(`\n[email] to: ${email.to}\n[email] subject: ${email.subject}${files}\n${email.text}\n`);
     return;
   }
   try {
@@ -24,6 +31,9 @@ export async function sendEmail(email: Email): Promise<void> {
         subject: email.subject,
         text: email.text,
         ...(email.replyTo ? { reply_to: email.replyTo } : {}),
+        ...(email.attachments?.length
+          ? { attachments: email.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
+          : {}),
       }),
     });
     if (!res.ok) console.error("[email] Resend error", res.status, await res.text());

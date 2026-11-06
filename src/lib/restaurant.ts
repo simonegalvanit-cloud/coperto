@@ -2,9 +2,9 @@ import "server-only";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema, type DB } from "@/db";
 import type { Reservation, Restaurant } from "@/db/schema";
-import { availableSlots, type Booking } from "./availability";
+import { availableSlots, slotTimes, type Booking } from "./availability";
 import { spotForOnline } from "./floor";
-import { nowIn, toMinutes, weekdayOf } from "./time";
+import { daysBetween, nowIn, toMinutes, weekdayOf } from "./time";
 import { randomToken } from "./auth";
 import { guestFor } from "./guests";
 
@@ -40,9 +40,10 @@ export async function getClosures(restaurantId: string) {
 async function fixedContext(db: DB | Tx, restaurantId: string, date: string) {
   const [services, closed, tables, zones, combos, links, closedAreas] = await Promise.all([
     db
-      .select({ startTime: schema.serviceHours.startTime, endTime: schema.serviceHours.endTime })
+      .select({ name: schema.serviceHours.name, startTime: schema.serviceHours.startTime, endTime: schema.serviceHours.endTime })
       .from(schema.serviceHours)
-      .where(and(eq(schema.serviceHours.restaurantId, restaurantId), eq(schema.serviceHours.weekday, weekdayOf(date)))),
+      .where(and(eq(schema.serviceHours.restaurantId, restaurantId), eq(schema.serviceHours.weekday, weekdayOf(date))))
+      .orderBy(asc(schema.serviceHours.startTime)),
     db
       .select({ id: schema.closures.id })
       .from(schema.closures)
@@ -183,7 +184,7 @@ export async function createOnlineReservation(
   details: GuestDetails,
   area?: string | null,
   consent: { profile: boolean; marketing: boolean } = { profile: false, marketing: false },
-): Promise<{ ok: true; reservation: Reservation } | { ok: false; duplicateAt?: string }> {
+): Promise<{ ok: true; reservation: Reservation } | { ok: false; why: Unavailable }> {
   const db = await getDb();
   // Read before taking the lock, all at once: on a database far from the server every round trip counts, and
   // only the day's bookings can change between here and the insert.
@@ -198,9 +199,11 @@ export async function createOnlineReservation(
     const bookings = await dayBookings(tx, r.id, details.date);
     // One guest, one table at a time: the same email or phone can't hold two bookings that overlap.
     const mine = bookings.find((b) => sameGuest(b, details) && overlaps(b, details.time, r.durationMinutes));
-    if (mine) return { ok: false as const, duplicateAt: mine.time };
+    if (mine) return { ok: false as const, why: { reason: "duplicate" as const, time: mine.time } };
     const ctx = { ...fixed, bookings };
-    if (!slotsFor(r, details.date, details.partySize, ctx, area).includes(details.time)) return { ok: false as const };
+    if (!slotsFor(r, details.date, details.partySize, ctx, area).includes(details.time)) {
+      return { ok: false as const, why: whyUnavailable(r, details, ctx, area) };
+    }
     // Restaurants that drew their room get the table (or joined tables) now, so the booking is on the plan straight away.
     const spot = ctx.tables.length > 0 ? spotFor(r, ctx, details.time, details.partySize, area) : null;
     const guestId = knownGuest !== undefined ? knownGuest : await guestFor(tx, r, details, { ...consent, source: "online" });
@@ -219,6 +222,31 @@ export async function createOnlineReservation(
       .returning();
     return { ok: true as const, reservation };
   });
+}
+
+export type Unavailable =
+  | { reason: "duplicate"; time: string }
+  | { reason: "suspended" | "closed" | "past" | "too_soon" | "too_far" | "no_table" | "taken" }
+  | { reason: "outside_hours"; services: { name: string; startTime: string; endTime: string }[] };
+
+/**
+ * Why a time can't be booked, checked in the order a guest would understand it: the restaurant isn't taking
+ * bookings, the day is closed, the time has passed or is too soon, too far ahead, outside opening hours, no
+ * table fits the party even on an empty day, or — only then — someone else just took it.
+ */
+function whyUnavailable(r: Restaurant, d: { date: string; time: string; partySize: number }, ctx: DayContext, area?: string | null): Unavailable {
+  if (!r.bookingOpen) return { reason: "suspended" };
+  const now = nowIn(r.timezone);
+  const daysAhead = daysBetween(now.date, d.date);
+  if (daysAhead < 0) return { reason: "past" };
+  if (daysAhead > r.maxDaysAhead) return { reason: "too_far" };
+  if (ctx.closed || ctx.services.length === 0) return { reason: "closed" };
+  if (!slotTimes(ctx.services, r.slotMinutes).includes(d.time)) return { reason: "outside_hours", services: ctx.services };
+  const minutesFromNow = daysAhead * 1440 + toMinutes(d.time) - now.minutes;
+  if (minutesFromNow < 0) return { reason: "past" };
+  if (minutesFromNow < r.minNoticeMinutes) return { reason: "too_soon" };
+  if (!slotsFor(r, d.date, d.partySize, { ...ctx, bookings: [] }, area).includes(d.time)) return { reason: "no_table" };
+  return { reason: "taken" };
 }
 
 const phoneTail = (phone: string) => phone.replace(/\D/g, "").slice(-9);
