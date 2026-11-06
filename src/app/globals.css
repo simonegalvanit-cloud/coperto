@@ -395,3 +395,6 @@ body:has(.floor) .topbar-in { max-width: 1680px; }
 .pin-form { display: flex; flex-direction: row-reverse; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pin-form .btn { padding: 6px 12px; font-size: 14px; background: var(--paper); color: var(--ink); }
 .pin-form .form-ok, .pin-form .form-error { font-size: 14px; flex-basis: 100%; }
+.chip-full { opacity: 0.5; cursor: not-allowed; text-decoration: line-through; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.chip-full small { text-decoration: none; font-size: 11px; font-weight: 600; }
+.chip-full:hover { background: transparent; }

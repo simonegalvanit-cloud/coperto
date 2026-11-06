@@ -37,7 +37,7 @@ export function BookingFlow({
   initialDate?: string;
   initialParty?: number;
 }) {
-  const [party, setParty] = useState(Math.min(initialParty ?? 2, maxPartySize));
+  const [party, setParty] = useState(Math.max(1, Math.min(initialParty ?? 2, maxPartySize)));
   const [date, setDate] = useState(
     days.find((d) => d.date === initialDate && d.open)?.date ?? days.find((d) => d.open)?.date ?? days[0].date,
   );
@@ -53,6 +53,8 @@ export function BookingFlow({
       return rest;
     });
   const [slots, setSlots] = useState<string[] | null>(null);
+  // Times already full for this party: shown crossed out, so guests see why they can't pick them.
+  const [full, setFull] = useState<string[]>([]);
   const [time, setTime] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [state, run, pending] = useActionState(async (prev: BookingResult, data: FormData) => {
@@ -75,7 +77,10 @@ export function BookingFlow({
     const ctrl = new AbortController();
     fetch(`/api/availability?slug=${encodeURIComponent(slug)}&date=${date}&party=${party}${zone ? `&area=${encodeURIComponent(zone)}` : ""}`, { signal: ctrl.signal })
       .then((r) => r.json())
-      .then((data: { slots?: string[] }) => setSlots(data.slots ?? []))
+      .then((data: { slots?: string[]; full?: string[] }) => {
+        setFull(data.full ?? []);
+        setSlots(data.slots ?? []);
+      })
       .catch((err) => {
         if (err.name !== "AbortError") setSlots([]);
       });
@@ -287,19 +292,30 @@ export function BookingFlow({
         ) : slots.length === 0 ? (
           <div className="panel stack">
             <p>
-              Nessun tavolo libero per {people(party)} in questo giorno{zone ? " in quest’area" : ""}. Prova un altro giorno{zone ? " o un’altra area" : ""}
+              {full.length > 0 ? `Al completo per ${people(party)} in questo giorno` : `Nessun tavolo libero per ${people(party)} in questo giorno`}
+              {zone ? " in quest’area" : ""}. Prova un altro giorno{zone ? " o un’altra area" : ""}
               {phone ? <> o chiama al <a href={`tel:${phone.replace(/\s/g, "")}`}>{phone}</a></> : ""}.
             </p>
             <WaitlistForm key={`${date}-${party}`} slug={slug} date={date} party={party} />
           </div>
         ) : (
-          <div className="slots">
-            {slots.map((s) => (
-              <button key={s} type="button" className="chip" onClick={() => setTime(s)}>
-                {s}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="slots">
+              {[...slots, ...full].sort().map((s) =>
+                full.includes(s) ? (
+                  <button key={s} type="button" className="chip chip-full" disabled aria-label={`${s}, al completo`}>
+                    {s}
+                    <small>pieno</small>
+                  </button>
+                ) : (
+                  <button key={s} type="button" className="chip" onClick={() => setTime(s)}>
+                    {s}
+                  </button>
+                ),
+              )}
+            </div>
+            {full.length > 0 && <p className="small muted">Gli orari “pieno” sono già al completo per {people(party)}.</p>}
+          </>
         )}
       </div>
     </>

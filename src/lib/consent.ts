@@ -57,8 +57,13 @@ export async function guestFor(
   const email = normalizeEmail(contact.guestEmail);
   if (!phone && !email) return null;
   const g = schema.guests;
-  const [byPhone] = phone ? await db.select().from(g).where(and(eq(g.restaurantId, restaurant.id), eq(g.phone, phone))).limit(1) : [];
-  const [found] = byPhone ? [byPhone] : email ? await db.select().from(g).where(and(eq(g.restaurantId, restaurant.id), eq(g.email, email))).limit(1) : [];
+  // One query for both: a profile matching the phone wins over one matching only the email.
+  const [found] = await db
+    .select()
+    .from(g)
+    .where(and(eq(g.restaurantId, restaurant.id), or(phone ? eq(g.phone, phone) : undefined, email ? eq(g.email, email) : undefined)))
+    .orderBy(phone ? sql`${g.phone} = ${phone} desc` : sql`1`)
+    .limit(1);
 
   if (!consent?.profile) return found?.profileConsentAt ? found.id : null;
 

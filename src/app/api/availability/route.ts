@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getAvailableSlots, getRestaurantBySlug } from "@/lib/restaurant";
+import { getRestaurantBySlug, getSlotsAndFull } from "@/lib/restaurant";
 import { isDate } from "@/lib/time";
 
 export async function GET(req: NextRequest) {
@@ -11,6 +11,6 @@ export async function GET(req: NextRequest) {
   if (!isDate(date) || !Number.isInteger(party)) return NextResponse.json({ error: "bad request" }, { status: 400 });
   const restaurant = await getRestaurantBySlug(slug);
   if (!restaurant) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const slots = await getAvailableSlots(restaurant, date, party, area);
-  return NextResponse.json({ slots }, { headers: { "Cache-Control": "no-store" } });
+  const { slots, full } = await getSlotsAndFull(restaurant, date, party, area);
+  return NextResponse.json({ slots, full }, { headers: { "Cache-Control": "no-store" } });
 }

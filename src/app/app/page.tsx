@@ -104,7 +104,13 @@ export default async function DayPage({ searchParams }: PageProps<"/app">) {
         <div><strong>{covers(active)}</strong><span>coperti</span></div>
         <div><strong>{active.length}</strong><span>prenotazioni</span></div>
         {plan.tables.length > 0 && (
-          <div><strong>{tablesInUse}</strong><span>tavoli assegnati</span></div>
+          <div title="Tavoli diversi con almeno una prenotazione oggi: lo stesso tavolo può servire più prenotazioni a orari diversi.">
+            <strong>
+              {tablesInUse}
+              <small className="muted">/{plan.tables.length}</small>
+            </strong>
+            <span>tavoli usati oggi</span>
+          </div>
         )}
         <div><strong>{covers(bookings.filter((b) => b.status === "seated"))}</strong><span>a tavola ora</span></div>
         <div><strong>{bookings.filter((b) => b.status === "no_show").length}</strong><span>no-show</span></div>

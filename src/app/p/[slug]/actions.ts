@@ -14,9 +14,9 @@ import { daysBetween, formatDate, isDate, isTime, nowIn, toMinutes } from "@/lib
 export type BookingResult = { error?: string; unavailable?: boolean } | null;
 
 const bookingSchema = z.object({
-  date: z.string().refine(isDate),
-  time: z.string().refine(isTime),
-  partySize: z.coerce.number().int().min(1),
+  date: z.string().refine(isDate, "Scegli un giorno."),
+  time: z.string().refine(isTime, "Scegli un orario."),
+  partySize: z.coerce.number("Quante persone?").int("Quante persone?").min(1, "Quante persone?"),
   guestName: z.string().trim().min(2, "Scrivi nome e cognome.").max(120),
   guestPhone: z.string().trim().min(6, "Scrivi un numero di telefono, serve se il ristorante deve contattarti.").max(40),
   guestEmail: z.email("Controlla l’email: ti mandiamo lì la conferma.").trim().toLowerCase(),
@@ -34,12 +34,20 @@ export async function createBooking(slug: string, embed: boolean, _: BookingResu
 
   const restaurant = await getRestaurantBySlug(slug);
   if (!restaurant) return { error: "Ristorante non trovato." };
+  if (parsed.data.partySize > restaurant.maxPartySize) {
+    return { error: `Online si prenota fino a ${restaurant.maxPartySize} persone: per gruppi più grandi chiama il ristorante.` };
+  }
   const { area, remember, marketing, ...details } = parsed.data;
   // Offers only together with "remember me": they need the profile to be kept.
   const result = await createOnlineReservation(restaurant, details, area || null, {
     profile: remember === "on",
     marketing: remember === "on" && marketing === "on",
   });
+  if (!result.ok && result.duplicateAt) {
+    return {
+      error: `Con questa email o questo telefono c’è già una prenotazione alle ${result.duplicateAt} di quel giorno. Per cambiarla o cancellarla usa il link nell’email di conferma.`,
+    };
+  }
   if (!result.ok) {
     return { unavailable: true, error: "Quell’orario è appena stato preso. Scegline un altro." };
   }

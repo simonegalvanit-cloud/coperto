@@ -16,7 +16,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   if (!r) notFound();
   const embed = sp.embed === "1";
   const initialDate = typeof sp.data === "string" && isDate(sp.data) ? sp.data : undefined;
-  const initialParty = typeof sp.persone === "string" && /^\d{1,3}$/.test(sp.persone) ? Number(sp.persone) : undefined;
+  const initialParty = typeof sp.persone === "string" && /^[1-9]\d{0,2}$/.test(sp.persone) ? Number(sp.persone) : undefined;
 
   if (!r.bookingOpen) {
     return (
