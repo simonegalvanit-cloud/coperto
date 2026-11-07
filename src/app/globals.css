@@ -398,3 +398,9 @@ body:has(.floor) .topbar-in { max-width: 1680px; }
 .chip-full { opacity: 0.5; cursor: not-allowed; text-decoration: line-through; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
 .chip-full small { text-decoration: none; font-size: 11px; font-weight: 600; }
 .chip-full:hover { background: transparent; }
+.admin-bar { background: rgba(214, 220, 236, 0.95); }
+.admin-table-wrap { overflow-x: auto; border: 2px solid var(--ink); background: var(--paper); }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 860px; }
+.admin-table th, .admin-table td { text-align: left; padding: 10px 12px; border-bottom: 1.5px solid var(--ink); vertical-align: top; }
+.admin-table th { font-size: 13px; font-weight: 700; }
+.admin-table .num { text-align: right; font-variant-numeric: tabular-nums; }

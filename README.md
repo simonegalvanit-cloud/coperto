@@ -83,6 +83,22 @@ team. On the tablet the owner works as a manager (no deleting or exporting the r
 
 Every booking entered by staff records who entered it ("Inserita da Luca").
 
+### Admin panel (Coperto's own back office)
+
+`/admin`, for the Coperto accounts whose email is in `ADMIN_EMAILS` (an "Admin" button appears in their app header).
+Everyone else, and any room tablet, gets "page not found".
+
+| Page | What it shows |
+| --- | --- |
+| Panoramica | Restaurants (total, new in 7/30 days, active in 7 days), users, bookings today and this month (online share), guest profiles, applications, latest signups |
+| Ristoranti | Searchable list (name, city, address, owner email) with team, tables, bookings, last booking, flags; each opens a read-only detail: owner, settings, team and PINs, tablets, opening hours, recent bookings |
+| Utenti | Everyone with a login or a PIN, their restaurants and roles; send a password-reset link |
+| Candidature | Applications from "Lavora con noi": read, download CV, delete |
+| Sistema | Database, email, app URL, cron secret, careers email: configured or not, with what to do |
+| Registro | Every restaurant opened, CV downloaded, link sent or application deleted, by whom and when |
+
+An admin logs in like anyone else, so their email must belong to a Coperto account (for example the owner of a test restaurant).
+
 ## Try it on your computer
 
 You need [Node.js 22](https://nodejs.org). Then, in this folder:

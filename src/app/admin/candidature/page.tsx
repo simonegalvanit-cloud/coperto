@@ -1,27 +1,19 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { notFound } from "next/navigation";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { Logo } from "@/components/Logo";
-import { getCurrentAccount } from "@/lib/auth";
-import { CV_RETENTION_MONTHS, isCareersAdmin, listApplications } from "@/lib/careers";
+import { requireAdmin } from "@/lib/admin";
+import { CV_RETENTION_MONTHS, listApplications } from "@/lib/careers";
 import { removeApplication } from "./actions";
 
-export const metadata: Metadata = { title: "Candidature", robots: { index: false } };
+export const metadata: Metadata = { title: "Candidature" };
 
 const when = (d: Date) => new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeZone: "Europe/Rome" }).format(d);
 
 /** Applications from "Lavora con noi", for the people listed in ADMIN_EMAILS. Anyone else gets a 404. */
 export default async function ApplicationsPage() {
-  const account = await getCurrentAccount();
-  if (!account || account.onTablet || !isCareersAdmin(account.user.email)) notFound();
+  await requireAdmin();
   const apps = await listApplications();
   return (
-    <main className="legal" style={{ maxWidth: 960 }}>
-      <div className="spread">
-        <Logo href="/app" />
-        <Link href="/app" className="small">‹ Torna all’app</Link>
-      </div>
+    <>
       <div>
         <h1>Candidature</h1>
         <p className="muted">Da “Lavora con noi”. Si cancellano da sole dopo {CV_RETENTION_MONTHS} mesi; cancellale prima se la selezione è chiusa.</p>
@@ -56,6 +48,6 @@ export default async function ApplicationsPage() {
           ))}
         </ul>
       )}
-    </main>
+    </>
   );
 }

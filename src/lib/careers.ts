@@ -29,13 +29,6 @@ export function cvKind(bytes: Buffer): { type: string; ext: string } | null {
   return null;
 }
 
-/** People allowed to read applications: the logged-in emails listed in ADMIN_EMAILS (comma separated). */
-export function isCareersAdmin(email: string | null | undefined) {
-  if (!email) return false;
-  const admins = (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
-  return admins.includes(email.toLowerCase());
-}
-
 type Application = Omit<typeof schema.jobApplications.$inferInsert, "id" | "createdAt">;
 
 /** Saves an application and emails it, CV attached, to CAREERS_EMAIL when set. */
