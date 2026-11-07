@@ -1,16 +1,16 @@
 import { z } from "zod";
-import { getCurrentAccount } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { isAdmin, logAdmin } from "@/lib/admin";
 import { getCv } from "@/lib/careers";
 
 /** A candidate's CV, as a download, for the people listed in ADMIN_EMAILS only. */
 export async function GET(_: Request, { params }: RouteContext<"/admin/candidature/[id]/cv">) {
-  const account = await getCurrentAccount();
+  const user = await getCurrentUser();
   const id = z.uuid().safeParse((await params).id);
-  if (!account || account.onTablet || !isAdmin(account.user.email) || !id.success) return new Response("Non trovato", { status: 404 });
+  if (!user || user.onTablet || !isAdmin(user.email) || !id.success) return new Response("Non trovato", { status: 404 });
   const cv = await getCv(id.data);
   if (!cv) return new Response("Non trovato", { status: 404 });
-  await logAdmin({ id: account.user.id, email: account.user.email! }, "Ha scaricato il CV", cv.name);
+  await logAdmin({ id: user.id, email: user.email! }, "Ha scaricato il CV", cv.name);
   return new Response(new Uint8Array(cv.cv), {
     headers: {
       "Content-Type": cv.type,

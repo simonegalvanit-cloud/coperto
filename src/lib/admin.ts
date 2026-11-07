@@ -2,23 +2,20 @@ import "server-only";
 import { notFound } from "next/navigation";
 import { asc, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { getCurrentAccount } from "./auth";
+import { isAdmin } from "./admin-emails";
+import { getCurrentUser } from "./auth";
 
-/** Coperto's own staff: the logged-in accounts whose email is listed in ADMIN_EMAILS (comma separated). */
-export function isAdmin(email: string | null | undefined) {
-  if (!email) return false;
-  const admins = (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
-  return admins.includes(email.toLowerCase());
-}
+export { isAdmin };
 
 /**
  * For every admin page and action. Anyone else — logged out, a restaurant owner, a room tablet — gets "page not
  * found", so the panel doesn't even show that it exists.
  */
 export async function requireAdmin() {
-  const account = await getCurrentAccount();
-  if (!account || account.onTablet || !isAdmin(account.user.email)) notFound();
-  return account.user as { id: string; email: string; name: string };
+  // The login, not the restaurant: Coperto's staff don't need a restaurant of their own.
+  const user = await getCurrentUser();
+  if (!user || user.onTablet || !isAdmin(user.email)) notFound();
+  return { id: user.id, email: user.email!, name: user.name };
 }
 
 /** Records what an admin looked at or did, e.g. ("Ha aperto il ristorante", "Osteria Bella"). */

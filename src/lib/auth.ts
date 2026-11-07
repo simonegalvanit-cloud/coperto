@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { and, asc, eq, gt, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import { isAdmin } from "./admin-emails";
 import { can, type MemberRole, type Permission } from "./roles";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
@@ -148,13 +149,32 @@ export const getCurrentAccount = cache(async () => {
   return { ...row, role, onTablet: !!row.deviceId };
 });
 
+/** The logged-in person, whether or not they work at a restaurant (Coperto's own staff may not). */
+export const getCurrentUser = cache(async () => {
+  const id = await currentSessionId();
+  if (!id) return null;
+  const db = await getDb();
+  const { sessions, users } = schema;
+  const [row] = await db
+    .select({ id: users.id, email: users.email, name: users.name, deviceId: sessions.deviceId })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .where(and(eq(sessions.id, id), gt(sessions.expiresAt, new Date())));
+  return row ? { id: row.id, email: row.email, name: row.name, onTablet: !!row.deviceId } : null;
+});
+
 /**
  * Use at the top of every staff page and action: sends visitors without a session to the login, and members
  * whose role doesn't allow the page back to the bookings.
  */
 export async function requireAccount(permission?: Permission) {
   const account = await getCurrentAccount();
-  if (!account) redirect((await getDevice()) ? "/sala" : "/accedi");
+  if (!account) {
+    // Coperto's own staff without a restaurant belong in the admin panel, not on the login page.
+    const user = await getCurrentUser();
+    if (user && !user.onTablet && isAdmin(user.email)) redirect("/admin");
+    redirect((await getDevice()) ? "/sala" : "/accedi");
+  }
   if (permission && !can(account.role, permission)) redirect("/app");
   return account;
 }

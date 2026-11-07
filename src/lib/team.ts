@@ -1,6 +1,7 @@
 import "server-only";
 import { and, eq, gt, inArray, notExists, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import { isAdmin } from "./admin-emails";
 import { randomToken, tokenHash } from "./auth";
 import { sendEmail } from "./email";
 import { ROLE_LABEL, type MemberRole } from "./roles";
@@ -102,14 +103,20 @@ export async function resolvePasswordReset(token: string) {
 
 /**
  * Deletes a restaurant and everything in it (bookings, guests, floor plan, team), then the accounts of team
- * members who aren't on any other team. Someone who also works elsewhere keeps their account.
+ * members who aren't on any other team. Someone who also works elsewhere keeps their account, and so does
+ * Coperto's own staff.
  */
 export async function deleteRestaurant(restaurantId: string) {
   const db = await getDb();
   await db.transaction(async (tx) => {
-    const team = await tx.select({ userId: schema.members.userId }).from(schema.members).where(eq(schema.members.restaurantId, restaurantId));
+    const team = await tx
+      .select({ userId: schema.members.userId, email: schema.users.email })
+      .from(schema.members)
+      .innerJoin(schema.users, eq(schema.users.id, schema.members.userId))
+      .where(eq(schema.members.restaurantId, restaurantId));
     await tx.delete(schema.restaurants).where(eq(schema.restaurants.id, restaurantId));
-    const ids = team.map((m) => m.userId);
+    // Coperto's own staff keep their login: they use it for the admin panel.
+    const ids = team.filter((m) => !isAdmin(m.email)).map((m) => m.userId);
     if (ids.length) {
       await tx
         .delete(schema.users)

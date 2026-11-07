@@ -9,6 +9,7 @@ import { getDb, schema } from "@/db";
 import type { ActionResult } from "@/components/ActionForm";
 import { currentSessionId, endSession, endSessionsOf, hashPassword, requireAccount, verifyPassword } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
+import { isAdmin } from "@/lib/admin-emails";
 import { TERMS_VERSION } from "@/lib/legal";
 import { isPin, isWeakPin, setPin } from "@/lib/pins";
 import { deleteRestaurant } from "@/lib/team";
@@ -79,8 +80,9 @@ export async function leaveRestaurant() {
   const db = await getDb();
   await db.delete(schema.members).where(and(eq(schema.members.userId, user.id), eq(schema.members.restaurantId, restaurant.id)));
   const [other] = await db.select({ id: schema.members.id }).from(schema.members).where(eq(schema.members.userId, user.id)).limit(1);
-  if (other) {
+  if (other || isAdmin(user.email)) {
     revalidatePath("/", "layout");
+    // Coperto's own staff keep their login for the admin panel (/app sends them there).
     redirect("/app");
   }
   await db.delete(schema.users).where(eq(schema.users.id, user.id));
@@ -122,6 +124,10 @@ export async function closeRestaurant(_: ActionResult, data: FormData): Promise<
       `Grazie per aver usato Coperto.`,
     ].join("\n"),
   });
+  if (isAdmin(user.email)) {
+    revalidatePath("/", "layout");
+    redirect("/admin");
+  }
   await endSession();
   await signedOut(`/account-eliminato?ristorante=${encodeURIComponent(restaurant.name)}`);
   return null;

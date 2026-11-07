@@ -10,6 +10,7 @@ import { endSession, endSessionsOf, getDevice, hashPassword, newSession, setSess
 import { resolvePasswordReset, sendPasswordReset } from "@/lib/team";
 import { slugify, uniqueSlug } from "@/lib/restaurant";
 import type { ActionResult } from "@/components/ActionForm";
+import { isAdmin } from "@/lib/admin-emails";
 import { databaseHealth } from "@/lib/health";
 import { TERMS_VERSION } from "@/lib/legal";
 
@@ -118,6 +119,7 @@ export async function login(_: ActionResult, data: FormData): Promise<ActionResu
   const email = String(data.get("email") ?? "").trim().toLowerCase();
   const password = String(data.get("password") ?? "");
   const slug = String(data.get("slug") ?? "");
+  let admin = false;
   try {
     const db = await getDb();
     const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
@@ -128,16 +130,23 @@ export async function login(_: ActionResult, data: FormData): Promise<ActionResu
       .from(schema.members)
       .innerJoin(schema.restaurants, eq(schema.restaurants.id, schema.members.restaurantId))
       .where(eq(schema.members.userId, user.id));
-    if (teams.length === 0) return { error: "Questo account non fa più parte di nessun ristorante. Chiedi al titolare di invitarti di nuovo." };
+    // Coperto's own staff may have no restaurant: they go to the admin panel.
+    if (teams.length === 0 && !slug && isAdmin(user.email)) {
+      await startSession(user.id);
+      revalidatePath("/", "layout");
+      admin = true;
+    } else if (teams.length === 0) {
+      return { error: "Questo account non fa più parte di nessun ristorante. Chiedi al titolare di invitarti di nuovo." };
+    }
     const here = slug ? teams.find((t) => t.slug === slug) : undefined;
     if (slug && !here) return { error: "Questo account non fa parte dello staff di questo ristorante." };
-    await startSession(user.id, here?.restaurantId ?? null);
+    if (!admin) await startSession(user.id, here?.restaurantId ?? null);
   } catch (err) {
     return explainFailure("login", err);
   }
   // A new account on this device: drop any pages the browser kept from the previous one.
   revalidatePath("/", "layout");
-  redirect("/app");
+  redirect(admin ? "/admin" : "/app");
 }
 
 /**
@@ -172,6 +181,25 @@ export async function resetPassword(_: ActionResult, data: FormData): Promise<Ac
   await startSession(user.id);
   revalidatePath("/", "layout");
   redirect("/app");
+}
+
+/**
+ * First access for Coperto's own staff (emails in ADMIN_EMAILS), who have no restaurant to sign up with: creates
+ * the account without a password and emails the usual link to choose one, which proves the address is theirs.
+ * Always the same answer, so the form doesn't reveal who's an admin.
+ */
+export async function requestAdminAccess(_: ActionResult, data: FormData): Promise<ActionResult> {
+  const email = z.email().safeParse(String(data.get("email") ?? "").trim().toLowerCase());
+  if (!email.success) return { error: "Controlla l’email." };
+  if (isAdmin(email.data)) {
+    const db = await getDb();
+    await db
+      .insert(schema.users)
+      .values({ email: email.data, name: email.data.split("@")[0] })
+      .onConflictDoNothing({ target: schema.users.email });
+    await sendPasswordReset(email.data);
+  }
+  return { ok: `Se ${email.data} è un indirizzo dello staff di Coperto, ti abbiamo mandato un link per scegliere la password. Vale un’ora.` };
 }
 
 export async function logout() {
