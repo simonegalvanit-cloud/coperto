@@ -421,3 +421,8 @@ body:has(.floor) .topbar-in { max-width: 1680px; }
 /* Money: this font's fixed-width figures widen the decimal comma ("86 , 65 €"), so amounts use normal figures. */
 .money, .admin-table .num, .totals .money { font-variant-numeric: normal; }
 .plan-option .tag { align-self: flex-start; }
+.sim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px 24px; align-items: end; }
+.sim-grid input[type="range"] { width: 100%; accent-color: var(--ink); }
+.sim-table th[scope="row"] { font-weight: 600; }
+.sim-total td, .sim-total th { font-weight: 700; font-size: 16px; }
+.admin-table .neg { color: var(--alert); }

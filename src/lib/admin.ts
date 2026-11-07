@@ -246,6 +246,7 @@ export async function revenue() {
   // Counted from the real prices: twelve times a rounded monthly figure would be off by a few cents.
   let arr = 0;
   let cancelling = 0;
+  let yearly = 0;
   let trialsEnded90 = 0;
   let converted90 = 0;
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 86_400_000);
@@ -259,6 +260,7 @@ export async function revenue() {
       byPlan[s.plan].count++;
       byPlan[s.plan].mrr += value;
       if (s.kind === "active" && s.cancelling) cancelling++;
+      if (s.interval === "year") yearly++;
     }
     if (x.trialEndsAt < now && x.trialEndsAt > ninetyDaysAgo) {
       trialsEnded90++;
@@ -271,6 +273,7 @@ export async function revenue() {
     byState,
     byPlan,
     cancelling,
+    yearly,
     canceled: rows.filter((x) => x.subscriptionStatus === "canceled").length,
     trialsEnded90,
     converted90,

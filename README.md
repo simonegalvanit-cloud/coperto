@@ -113,6 +113,7 @@ Everyone else, and any room tablet, gets "page not found".
 | --- | --- |
 | Panoramica | Restaurants (total, new in 7/30 days, active in 7 days), users, bookings today and this month (online share), guest profiles, applications, latest signups |
 | Ristoranti | Searchable list (name, city, address, owner email) with team, tables, bookings, last booking, flags; each opens a read-only detail: owner, settings, team and PINs, tablets, opening hours, recent bookings |
+| Simulatore | What-if: paying restaurants, Sala/Banco mix, yearly share, monthly costs, Stripe fees → revenue, IVA (shown apart), fees, costs and profit per day / month / year, break-even, and a 12-month projection with new restaurants and cancellations |
 | Utenti | Everyone with a login or a PIN, their restaurants and roles; send a password-reset link |
 | Candidature | Applications from "Lavora con noi": read, download CV, delete |
 | Sistema | Database, email, app URL, cron secret, careers email: configured or not, with what to do |
