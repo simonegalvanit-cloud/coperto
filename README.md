@@ -97,7 +97,10 @@ Everyone else, and any room tablet, gets "page not found".
 | Sistema | Database, email, app URL, cron secret, careers email: configured or not, with what to do |
 | Registro | Every restaurant opened, CV downloaded, link sent or application deleted, by whom and when |
 
-An admin logs in like anyone else, so their email must belong to a Coperto account (for example the owner of a test restaurant).
+Admins don't need a restaurant. First time: open `/admin-accesso`, type an email listed in `ADMIN_EMAILS`, and follow the
+emailed link to choose a password (the email proves the address is yours, so nobody can claim it). After that, log in
+from the normal "Accedi" page: you land in the panel. An admin who also owns a restaurant gets an "Admin" button in the
+app instead, and deleting that restaurant never deletes an admin's login.
 
 ## Try it on your computer
 

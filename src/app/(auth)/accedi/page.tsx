@@ -3,13 +3,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
 import { Logo } from "@/components/Logo";
-import { getCurrentAccount } from "@/lib/auth";
+import { isAdmin } from "@/lib/admin-emails";
+import { getCurrentAccount, getCurrentUser } from "@/lib/auth";
 import { login } from "../actions";
 
 export const metadata: Metadata = { title: "Accedi" };
 
 export default async function LoginPage() {
   if (await getCurrentAccount()) redirect("/app");
+  const user = await getCurrentUser();
+  if (user && !user.onTablet && isAdmin(user.email)) redirect("/admin");
   return (
     <main className="auth">
       <Logo />
