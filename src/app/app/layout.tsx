@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { isAdmin } from "@/lib/admin";
 import { requireAccount } from "@/lib/auth";
 import { TERMS_VERSION } from "@/lib/legal";
 import { can } from "@/lib/roles";
@@ -30,6 +31,9 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
         <div className="topbar-in">
           <Logo href="/app" />
           <NavLinks links={links} />
+          {!onTablet && isAdmin(user.email) && (
+            <Link className="btn btn-small" href="/admin">Admin</Link>
+          )}
           <Link className="who" href="/app/account" title="Il mio account">
             <span className="muted">{restaurant.name}</span> · {user.name}
           </Link>

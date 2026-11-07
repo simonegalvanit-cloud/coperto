@@ -498,6 +498,23 @@ export const jobApplications = pgTable("job_applications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * What Coperto's own staff did in the admin panel: opening a restaurant's details, sending a password link,
+ * deleting an application. Kept so there's always a record of who looked at a restaurant's data and why.
+ */
+export const adminLog = pgTable(
+  "admin_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    adminId: uuid("admin_id").references(() => users.id, { onDelete: "set null" }),
+    adminEmail: text("admin_email").notNull(),
+    action: text("action").notNull(),
+    target: text("target").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("admin_log_created_idx").on(t.createdAt)],
+);
+
 export type Restaurant = typeof restaurants.$inferSelect;
 export type ServiceHour = typeof serviceHours.$inferSelect;
 export type Reservation = typeof reservations.$inferSelect;
