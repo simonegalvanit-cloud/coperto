@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { requireAccount } from "@/lib/auth";
+import { hasSalaFeatures } from "@/lib/billing";
 import { tableOptions } from "@/lib/plan";
 import { capitalize, formatDate } from "@/lib/time";
 import { ReservationForm } from "../../ReservationForm";
@@ -35,7 +36,7 @@ export default async function EditReservationPage({ params }: PageProps<"/app/pr
         </p>
       </div>
       <div className="panel">
-        <ReservationForm date={booking.date} initial={booking} tables={tables} />
+        <ReservationForm date={booking.date} initial={booking} tables={tables} profiles={hasSalaFeatures(restaurant)} />
       </div>
     </>
   );

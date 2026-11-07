@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { listRestaurants, requireAdmin } from "@/lib/admin";
+import { billingState, PLANS } from "@/lib/billing";
 
 export const metadata: Metadata = { title: "Ristoranti" };
 
@@ -31,6 +32,7 @@ export default async function AdminRestaurants({ searchParams }: PageProps<"/adm
                 <th className="num">Tavoli</th>
                 <th className="num">Prenotazioni</th>
                 <th>Ultima prenotazione</th>
+                <th>Abbonamento</th>
                 <th>Stato</th>
               </tr>
             </thead>
@@ -47,6 +49,9 @@ export default async function AdminRestaurants({ searchParams }: PageProps<"/adm
                   <td className="num">{r.tables}</td>
                   <td className="num">{r.bookings}</td>
                   <td className="small">{day(r.lastBooking)}</td>
+                  <td className="small">
+                    <BillingTag r={r} />
+                  </td>
                   <td>
                     {!r.bookingOpen && <span className="tag tag-alert">online sospeso</span>}{" "}
                     {!r.termsAccepted && <span className="tag">termini da accettare</span>}
@@ -60,4 +65,13 @@ export default async function AdminRestaurants({ searchParams }: PageProps<"/adm
       {list.length === 100 && <p className="small muted">Mostro i 100 più recenti: cerca per trovare gli altri.</p>}
     </>
   );
+}
+
+function BillingTag({ r }: { r: Parameters<typeof billingState>[0] }) {
+  const s = billingState(r);
+  if (s.kind === "trial") return <span className="tag">prova, {s.daysLeft} gg</span>;
+  if (s.kind === "comp") return <span className="tag">gratis</span>;
+  if (s.kind === "active") return <span className="tag tag-ok">{PLANS[s.plan].name} {s.interval === "year" ? "annuale" : "mensile"}</span>;
+  if (s.kind === "past_due") return <span className="tag tag-alert">pagamento non riuscito</span>;
+  return <span className="tag tag-alert">{s.reason === "trial_over" ? "prova scaduta" : "disdetto"}</span>;
 }

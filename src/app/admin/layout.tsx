@@ -11,6 +11,8 @@ export const metadata: Metadata = { title: { default: "Admin", template: "%s · 
 const LINKS: NavLink[] = [
   { href: "/admin", label: "Panoramica" },
   { href: "/admin/ristoranti", label: "Ristoranti" },
+  { href: "/admin/ricavi", label: "Ricavi" },
+  { href: "/admin/simulatore", label: "Simulatore" },
   { href: "/admin/utenti", label: "Utenti" },
   { href: "/admin/candidature", label: "Candidature" },
   { href: "/admin/sistema", label: "Sistema" },

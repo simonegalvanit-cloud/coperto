@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { listRestaurants, overview, requireAdmin } from "@/lib/admin";
+import { listRestaurants, overview, requireAdmin, revenue } from "@/lib/admin";
+import { eur } from "@/lib/billing";
 import { nowIn } from "@/lib/time";
 
 export const metadata: Metadata = { title: "Panoramica" };
@@ -9,7 +10,7 @@ const day = (d: Date) => new Intl.DateTimeFormat("it-IT", { dateStyle: "medium",
 
 export default async function AdminHome() {
   await requireAdmin();
-  const [o, latest] = await Promise.all([overview(nowIn("Europe/Rome").date), listRestaurants("", 8)]);
+  const [o, latest, money] = await Promise.all([overview(nowIn("Europe/Rome").date), listRestaurants("", 8), revenue()]);
   const stat = (value: number, label: string, href?: string) => (
     <div>
       <strong>{value.toLocaleString("it-IT")}</strong>
@@ -19,6 +20,12 @@ export default async function AdminHome() {
   return (
     <>
       <h1>Panoramica</h1>
+      <div className="totals">
+        <div><strong className="money">{eur(money.mrr)}</strong><span><Link href="/admin/ricavi">ricavi ricorrenti al mese</Link></span></div>
+        <div><strong>{money.byState.active}</strong><span>paganti</span></div>
+        <div><strong>{money.byState.trial}</strong><span>in prova</span></div>
+        <div><strong>{money.byState.past_due + money.byState.expired}</strong><span>da recuperare</span></div>
+      </div>
       <div className="totals">
         {stat(o.restaurants, "ristoranti", "/admin/ristoranti")}
         {stat(o.new7, "nuovi in 7 giorni")}

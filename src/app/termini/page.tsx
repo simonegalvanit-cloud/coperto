@@ -35,19 +35,28 @@ export default function TermsPage() {
       <ul>
         <li>I primi 14 giorni sono gratuiti e non serve una carta.</li>
         <li>
-          Dopo la prova il servizio costa il canone mensile del piano scelto, come indicato sul sito al momento dell’acquisto
-          (Banco 19,99 €, Sala 39,99 € al mese; Gruppo su preventivo), più IVA se dovuta. Non applichiamo commissioni sulle
-          prenotazioni o sui coperti.
+          Se alla fine della prova non hai scelto un piano, le prenotazioni online vanno in pausa: i tuoi dati e le prenotazioni già
+          fatte restano, e tutto riparte appena attivi l’abbonamento.
         </li>
-        <li>Il canone si paga in anticipo ogni mese, con i metodi di pagamento offerti. Ricevi la fattura elettronica.</li>
+        <li>
+          Dopo la prova il servizio costa il canone del piano scelto, come indicato sul sito al momento dell’acquisto: Banco
+          19,99 € e Sala 39,99 € al mese, oppure 199,90 € e 399,90 € all’anno (due mesi gratis); Gruppo su preventivo. I prezzi
+          sono più IVA (22%). Non applichiamo commissioni sulle prenotazioni o sui coperti.
+        </li>
+        <li>
+          Il canone si paga in anticipo, ogni mese o ogni anno, con carta tramite Stripe, che gestisce i dati di pagamento:
+          Coperto non li vede né li conserva. Ricevi la fattura elettronica.
+        </li>
+        <li>Il piano Banco non include la pianta della sala né le schede ospite, che fanno parte del piano Sala.</li>
         <li>Se un pagamento non va a buon fine, dopo un avviso e 14 giorni possiamo sospendere il servizio finché non è saldato. I dati restano al sicuro durante la sospensione.</li>
         <li>Possiamo cambiare i prezzi avvisandoti almeno 30 giorni prima: il nuovo prezzo vale dal rinnovo successivo e puoi disdire prima che si applichi.</li>
       </ul>
 
       <h2>4. Durata e disdetta</h2>
       <p>
-        L’abbonamento si rinnova di mese in mese. Puoi disdire quando vuoi: il servizio resta attivo fino alla fine del mese già
-        pagato, senza penali e senza rimborsi per il periodo in corso. Possiamo chiudere un account con 30 giorni di preavviso,
+        L’abbonamento si rinnova automaticamente di mese in mese, o di anno in anno per il piano annuale. Puoi disdire quando
+        vuoi: il servizio resta attivo fino alla fine del periodo già pagato, senza penali e senza rimborsi per il periodo in
+        corso. Possiamo chiudere un account con 30 giorni di preavviso,
         o subito se i presenti termini vengono violati in modo grave (per esempio uso illecito o mancato pagamento dopo la
         sospensione).
       </p>

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { createOnlineReservation, getRestaurantBySlug, getReservationByToken, type Unavailable } from "@/lib/restaurant";
 import type { Restaurant } from "@/db/schema";
+import { acceptsOnline, hasSalaFeatures } from "@/lib/billing";
 import { emailCancellation, emailGuestConfirmation, emailRestaurantNewBooking } from "@/lib/notifications";
 import { notifyWaitlist } from "@/lib/waitlist";
 import { daysBetween, formatDate, isDate, isTime, nowIn, toMinutes } from "@/lib/time";
@@ -40,9 +41,11 @@ export async function createBooking(slug: string, embed: boolean, _: BookingResu
   }
   const { area, remember, marketing, ...details } = parsed.data;
   // Offers only together with "remember me": they need the profile to be kept.
+  // Guest profiles are a Sala feature: on Banco nobody is remembered.
+  const profiles = hasSalaFeatures(restaurant);
   const result = await createOnlineReservation(restaurant, details, area || null, {
-    profile: remember === "on",
-    marketing: remember === "on" && marketing === "on",
+    profile: profiles && remember === "on",
+    marketing: profiles && remember === "on" && marketing === "on",
   });
   if (!result.ok) {
     const why = result.why;
@@ -114,7 +117,7 @@ export async function joinWaitlist(slug: string, _: WaitResult, data: FormData):
   const parsed = waitSchema.safeParse(Object.fromEntries(data));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const restaurant = await getRestaurantBySlug(slug);
-  if (!restaurant || !restaurant.bookingOpen) return { error: "Il ristorante non accetta prenotazioni online." };
+  if (!restaurant || !acceptsOnline(restaurant)) return { error: "Il ristorante non accetta prenotazioni online." };
   const { date, partySize, ...contact } = parsed.data;
   const now = nowIn(restaurant.timezone);
   const ahead = daysBetween(now.date, date);

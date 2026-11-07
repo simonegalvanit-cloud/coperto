@@ -6,6 +6,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { randomToken, requireAccount } from "@/lib/auth";
+import { hasSalaFeatures } from "@/lib/billing";
 import { emailCancellation, emailGuestConfirmation } from "@/lib/notifications";
 import { after } from "next/server";
 import { checkSpot } from "@/lib/spots";
@@ -94,7 +95,12 @@ export async function saveReservation(_: ActionResult, data: FormData): Promise<
     tableId: place?.startsWith("t:") ? place.slice(2) : null,
     combinationId: place?.startsWith("c:") ? place.slice(2) : null,
     // Re-matched on every save. A profile is created only if staff tick that the guest agreed to be remembered.
-    guestId: await guestFor(db, restaurant, rest, { profile: remember === "on", marketing: remember === "on" && marketing === "on", source: "staff" }),
+    // Guest profiles are a Sala feature: on Banco nobody is remembered.
+    guestId: await guestFor(db, restaurant, rest, {
+      profile: hasSalaFeatures(restaurant) && remember === "on",
+      marketing: hasSalaFeatures(restaurant) && remember === "on" && marketing === "on",
+      source: "staff",
+    }),
   };
 
   if (fields.tableId || fields.combinationId) {

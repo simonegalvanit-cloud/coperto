@@ -9,10 +9,13 @@ export function ReservationForm({
   date,
   initial,
   tables,
+  profiles = true,
 }: {
   date: string;
   initial?: Reservation;
   tables: TableOption[];
+  /** Whether the restaurant keeps guest profiles (Sala plan). */
+  profiles?: boolean;
 }) {
   return (
     <ActionForm action={saveReservation} submitLabel={initial ? "Salva le modifiche" : "Aggiungi la prenotazione"}>
@@ -83,7 +86,7 @@ export function ReservationForm({
           </select>
         </label>
       )}
-      {initial?.guestId ? (
+      {!profiles ? null : initial?.guestId ? (
         <p className="small muted">Collegata alla scheda dell’ospite, che ha scelto di essere ricordato.</p>
       ) : (
         <div className="consent">

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { requireAccount } from "@/lib/auth";
+import { hasSalaFeatures } from "@/lib/billing";
 import { tableOptions } from "@/lib/plan";
 import { isDate, nowIn } from "@/lib/time";
 import { ReservationForm } from "../ReservationForm";
@@ -15,7 +16,7 @@ export default async function NewReservationPage({ searchParams }: PageProps<"/a
     <>
       <h1>Nuova prenotazione</h1>
       <div className="panel">
-        <ReservationForm date={date} tables={tables} />
+        <ReservationForm date={date} tables={tables} profiles={hasSalaFeatures(restaurant)} />
       </div>
     </>
   );

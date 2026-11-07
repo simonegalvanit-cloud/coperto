@@ -4,6 +4,9 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { requireAccount } from "@/lib/auth";
+import { can } from "@/lib/roles";
+import { hasSalaFeatures } from "@/lib/billing";
+import { SalaOnly } from "@/components/SalaOnly";
 import { formatPhone } from "@/lib/contact";
 import { guestCounts } from "@/lib/guests";
 import { formatDate } from "@/lib/time";
@@ -13,7 +16,8 @@ export const metadata: Metadata = { title: "Schede senza consenso" };
 
 /** Profiles made before consent existed: switched off until staff record the guest's yes, or delete them. */
 export default async function UnconsentedPage() {
-  const { restaurant } = await requireAccount("guests");
+  const { restaurant, role } = await requireAccount("guests");
+  if (!hasSalaFeatures(restaurant)) return <SalaOnly feature="Le schede ospite" owner={can(role, "account")} />;
   const db = await getDb();
   const g = schema.guests;
   const guests = await db

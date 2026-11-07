@@ -6,6 +6,8 @@ import { LiveSync } from "@/components/LiveSync";
 import { DayJump } from "@/components/DayJump";
 import { changeStamp } from "@/lib/changes";
 import { requireAccount } from "@/lib/auth";
+import { hasSalaFeatures } from "@/lib/billing";
+import { SalaOnly } from "@/components/SalaOnly";
 import { can } from "@/lib/roles";
 import { closedAreas, loadPlan } from "@/lib/plan";
 import { guestInfoFor } from "@/lib/guests";
@@ -18,6 +20,7 @@ export const metadata: Metadata = { title: "Sala" };
 
 export default async function FloorPage({ searchParams }: PageProps<"/app/sala">) {
   const { restaurant, role } = await requireAccount();
+  if (!hasSalaFeatures(restaurant)) return <SalaOnly feature="La pianta della sala" owner={can(role, "account")} />;
   const now = nowIn(restaurant.timezone);
   const param = (await searchParams).data;
   const date = typeof param === "string" && isDate(param) ? param : now.date;

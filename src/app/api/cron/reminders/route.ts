@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { deleteOldApplications } from "@/lib/careers";
 import { cleanupRetention } from "@/lib/consent";
 import { sendDueReminders } from "@/lib/reminders";
+import { sendTrialEmails } from "@/lib/trial-mail";
 
 /**
  * Called every morning by Vercel Cron (see vercel.json). With CRON_SECRET set, Vercel sends it as a bearer
@@ -16,5 +17,6 @@ export async function GET(req: NextRequest) {
   const sent = await sendDueReminders();
   const cleanup = await cleanupRetention();
   const applicationsDeleted = await deleteOldApplications();
-  return NextResponse.json({ sent, ...cleanup, applicationsDeleted });
+  const trial = await sendTrialEmails();
+  return NextResponse.json({ sent, ...cleanup, applicationsDeleted, ...trial });
 }

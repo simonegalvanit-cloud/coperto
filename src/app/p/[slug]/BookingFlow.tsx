@@ -15,6 +15,7 @@ const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const people = (n: number) => (n === 1 ? "1 persona" : `${n} persone`);
 
 export function BookingFlow({
+  profiles = true,
   slug,
   embed,
   days,
@@ -25,6 +26,8 @@ export function BookingFlow({
   initialDate,
   initialParty,
 }: {
+  /** Whether the restaurant keeps guest profiles (Sala): without, no "Ricordati di me". */
+  profiles?: boolean;
   slug: string;
   embed: boolean;
   days: Day[];
@@ -172,7 +175,7 @@ export function BookingFlow({
               <FieldError id="err-guestEmail" message={fieldErrors.guestEmail} />
             </label>
           </div>
-          <div className="consent">
+          {profiles && <div className="consent">
             <label className="check check-top">
               <input type="checkbox" name="remember" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
               <span>{profileWording(restaurantName)}</span>
@@ -183,7 +186,7 @@ export function BookingFlow({
                 <span>{marketingWording(restaurantName)}</span>
               </label>
             )}
-          </div>
+          </div>}
           {Object.keys(fieldErrors).length > 0 && (
             <p className="form-error" role="alert">Controlla i campi segnati in rosso.</p>
           )}
@@ -196,7 +199,7 @@ export function BookingFlow({
             {pending ? "Prenoto…" : "Conferma la prenotazione"}
           </button>
           <p className="small muted">
-            Senza “Ricordati di me” usiamo i tuoi dati solo per questa prenotazione.{" "}
+            {profiles ? "Senza “Ricordati di me” usiamo i tuoi dati solo per questa prenotazione." : "Usiamo i tuoi dati solo per questa prenotazione."}{" "}
             <a href={`/p/${slug}/privacy`} target={embed ? "_blank" : undefined}>Informativa privacy</a>
           </p>
         </form>

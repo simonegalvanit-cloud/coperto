@@ -3,7 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { logAdmin, requireAdmin, restaurantDetail } from "@/lib/admin";
+import { ActionForm } from "@/components/ActionForm";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { billingState, eur, monthlyValue, PLANS } from "@/lib/billing";
 import { ROLE_LABEL } from "@/lib/roles";
+import { endFreeAccess, extendTrial, grantFreeAccess } from "../actions";
 import { capitalize, formatDate, nowIn, WEEKDAYS } from "@/lib/time";
 import { appUrl } from "@/lib/url";
 
@@ -23,6 +27,7 @@ export default async function AdminRestaurant({ params }: PageProps<"/admin/rist
   const r = d.restaurant;
   await logAdmin(admin, "Ha aperto il ristorante", r.name);
   const c = d.counts;
+  const billing = billingState(r);
   const field = (label: string, value: React.ReactNode) => (
     <div>
       <small>{label}</small>
@@ -59,6 +64,55 @@ export default async function AdminRestaurant({ params }: PageProps<"/admin/rist
         {field("Regole online", `fino a ${r.maxPartySize} persone · ${r.durationMinutes} min a tavolo · preavviso ${r.minNoticeMinutes} min · fino a ${r.maxDaysAhead} giorni`)}
         {field("Sala", c.tables ? `${c.tables} tavoli su ${c.floors} ${c.floors === 1 ? "piano" : "piani"}` : `non disegnata (${r.capacity} posti)`)}
       </div>
+
+      <section className="panel settings-section">
+        <header>
+          <h2>Abbonamento</h2>
+          <p className="muted">
+            {billing.kind === "trial" && `In prova fino al ${when(billing.endsAt)} (${billing.daysLeft} giorni).`}
+            {billing.kind === "comp" && `Accesso gratuito fino al ${when(billing.until)}: ${r.compNote}.`}
+            {billing.kind === "active" &&
+              `${PLANS[billing.plan].name} ${billing.interval === "year" ? "annuale" : "mensile"}, ${eur(monthlyValue(r.plan, r.billingInterval))} al mese senza IVA${billing.cancelling ? ", disdetto a fine periodo" : billing.renewsAt ? `, rinnovo il ${when(billing.renewsAt)}` : ""}.`}
+            {billing.kind === "past_due" && "Pagamento non riuscito: Stripe sta riprovando."}
+            {billing.kind === "expired" && (billing.reason === "trial_over" ? `Prova finita il ${when(r.trialEndsAt)}: prenotazioni online in pausa.` : "Abbonamento terminato: prenotazioni online in pausa.")}
+          </p>
+        </header>
+        {r.billingVat && (
+          <p className="small">
+            Fattura a: {r.billingName} · P.IVA {r.billingVat}
+            {r.billingTaxCode && ` · CF ${r.billingTaxCode}`} · {r.billingAddress} · {r.billingSdi ? `SDI ${r.billingSdi}` : `PEC ${r.billingPec}`}
+          </p>
+        )}
+        <div className="grid-2">
+          <ActionForm action={extendTrial} submitLabel="Allunga la prova" className="row">
+            <input type="hidden" name="id" value={r.id} />
+            <label className="field">
+              Giorni in più
+              <input className="input" type="number" name="days" min={1} max={365} defaultValue={14} required style={{ width: 110 }} />
+            </label>
+          </ActionForm>
+          {billing.kind === "comp" ? (
+            <form action={endFreeAccess}>
+              <input type="hidden" name="id" value={r.id} />
+              <ConfirmButton className="btn btn-danger" question={`Togliere l’accesso gratuito a ${r.name}?`} confirmLabel="Togli">
+                Togli l’accesso gratuito
+              </ConfirmButton>
+            </form>
+          ) : (
+            <ActionForm action={grantFreeAccess} submitLabel="Dai accesso gratuito" className="row">
+              <input type="hidden" name="id" value={r.id} />
+              <label className="field">
+                Fino al
+                <input className="input" type="date" name="until" required />
+              </label>
+              <label className="field" style={{ flex: "1 1 180px" }}>
+                Motivo
+                <input className="input" name="note" placeholder="Es. ristorante pilota" required />
+              </label>
+            </ActionForm>
+          )}
+        </div>
+      </section>
 
       <section className="panel settings-section">
         <header><h2>Team</h2></header>

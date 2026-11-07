@@ -502,7 +502,7 @@
   <!-- Pricing schedule -->
   <section class="wrap section" id="prezzi">
     <h2>Un canone fisso.<br>Zero commissioni.</h2>
-    <p class="lede">Prova gratuita di 14 giorni, senza carta. Disdici quando vuoi.</p>
+    <p class="lede">Prova gratuita di 14 giorni, senza carta. Prezzi più IVA. All’anno, due mesi sono gratis. Disdici quando vuoi.</p>
     <div class="schedule" tabindex="0" role="region" aria-label="Tabella dei piani">
       <table>
         <thead>
@@ -516,8 +516,8 @@
         <tbody>
           <tr class="price">
             <th scope="row" style="font-size:16px">Canone</th>
-            <td><b class="pr" data-price="19.99">19,99</b> € <span>/mese</span></td>
-            <td class="col-pick"><b class="pr" data-price="39.99">39,99</b> € <span>/mese</span></td>
+            <td><b class="pr" data-price="19.99">19,99</b> € <span>/mese + IVA</span></td>
+            <td class="col-pick"><b class="pr" data-price="39.99">39,99</b> € <span>/mese + IVA</span></td>
             <td>Su misura</td>
           </tr>
           <tr><th scope="row">Prenotazioni illimitate, zero commissioni</th><td><span class="yes" aria-label="Incluso"></span></td><td class="col-pick"><span class="yes" aria-label="Incluso"></span></td><td><span class="yes" aria-label="Incluso"></span></td></tr>
@@ -613,7 +613,7 @@
         if (tr.classList.contains('price')) {
           const price = document.createElement('p'); price.className = 'price';
           const amount = cell.querySelector('.pr');
-          price.textContent = amount ? `${Number(amount.dataset.price).toLocaleString('it-IT', { minimumFractionDigits: 2 })} € al mese` : cell.textContent.trim();
+          price.textContent = amount ? `${Number(amount.dataset.price).toLocaleString('it-IT', { minimumFractionDigits: 2 })} € al mese + IVA` : cell.textContent.trim();
           card.append(price);
         } else if (cell.querySelector('.yes')) {
           const li = document.createElement('li'); li.textContent = label; list.append(li);

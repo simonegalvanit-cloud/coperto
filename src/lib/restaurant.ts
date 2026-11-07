@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema, type DB } from "@/db";
 import type { Reservation, Restaurant } from "@/db/schema";
 import { availableSlots, slotTimes, type Booking } from "./availability";
+import { acceptsOnline } from "./billing";
 import { spotForOnline } from "./floor";
 import { daysBetween, nowIn, toMinutes, weekdayOf } from "./time";
 import { randomToken } from "./auth";
@@ -106,7 +107,7 @@ type DayContext = Awaited<ReturnType<typeof dayContext>>;
  * free for the whole stay); the others by the total seat count from settings.
  */
 function slotsFor(r: Restaurant, date: string, partySize: number, ctx: DayContext, area?: string | null) {
-  if (!r.bookingOpen) return [];
+  if (!acceptsOnline(r)) return [];
   const byTable = ctx.tables.length > 0;
   const rules = byTable ? { ...r, capacity: Number.MAX_SAFE_INTEGER } : r;
   const slots = availableSlots({ date, partySize, rules, now: nowIn(r.timezone), ...ctx });
@@ -235,7 +236,7 @@ export type Unavailable =
  * table fits the party even on an empty day, or — only then — someone else just took it.
  */
 function whyUnavailable(r: Restaurant, d: { date: string; time: string; partySize: number }, ctx: DayContext, area?: string | null): Unavailable {
-  if (!r.bookingOpen) return { reason: "suspended" };
+  if (!acceptsOnline(r)) return { reason: "suspended" };
   const now = nowIn(r.timezone);
   const daysAhead = daysBetween(now.date, d.date);
   if (daysAhead < 0) return { reason: "past" };

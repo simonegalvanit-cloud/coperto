@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { acceptsOnline, hasSalaFeatures } from "@/lib/billing";
 import { getClosures, getOnlineZones, getRestaurantBySlug, getServiceHours } from "@/lib/restaurant";
 import { addDays, isDate, nowIn, weekdayOf } from "@/lib/time";
 import { BookingFlow } from "./BookingFlow";
@@ -18,7 +19,8 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   const initialDate = typeof sp.data === "string" && isDate(sp.data) ? sp.data : undefined;
   const initialParty = typeof sp.persone === "string" && /^[1-9]\d{0,2}$/.test(sp.persone) ? Number(sp.persone) : undefined;
 
-  if (!r.bookingOpen) {
+  // Paused by the restaurant, or after the trial or subscription ended: guests just see bookings are closed.
+  if (!acceptsOnline(r)) {
     return (
       <PublicShell r={r} embed={embed}>
         <div className="panel">
@@ -40,7 +42,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
 
   return (
     <PublicShell r={r} embed={embed}>
-      <BookingFlow slug={r.slug} embed={embed} days={days} zones={zones.length > 1 ? zones : []} maxPartySize={r.maxPartySize} phone={r.phone} restaurantName={r.name} initialDate={initialDate} initialParty={initialParty} />
+      <BookingFlow profiles={hasSalaFeatures(r)} slug={r.slug} embed={embed} days={days} zones={zones.length > 1 ? zones : []} maxPartySize={r.maxPartySize} phone={r.phone} restaurantName={r.name} initialDate={initialDate} initialParty={initialParty} />
     </PublicShell>
   );
 }
