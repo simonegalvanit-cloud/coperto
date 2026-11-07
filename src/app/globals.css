@@ -404,3 +404,20 @@ body:has(.floor) .topbar-in { max-width: 1680px; }
 .admin-table th, .admin-table td { text-align: left; padding: 10px 12px; border-bottom: 1.5px solid var(--ink); vertical-align: top; }
 .admin-table th { font-size: 13px; font-weight: 700; }
 .admin-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.plan-option { display: flex; gap: 10px; align-items: flex-start; border: 1.5px solid var(--ink); padding: 14px; cursor: pointer; background: var(--paper); }
+.plan-option:has(input:checked) { box-shadow: 4px 4px 0 var(--ink); }
+.plan-option input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--ink); }
+.plan-option > span { display: flex; flex-direction: column; gap: 4px; }
+.big-price { font-size: 18px; font-weight: 700; }
+.billing-banner { border-color: var(--alert); }
+.bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; height: 200px; align-items: end; padding-top: 22px; border-bottom: 1px solid rgba(27, 42, 107, .35); }
+.bar-col { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; cursor: default; }
+.bar-col:hover .bar { opacity: .75; }
+.bar { width: min(70%, 28px); background: var(--ink); border-radius: 4px 4px 0 0; }
+.bar-value { position: absolute; top: -20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.bar-label { position: absolute; bottom: -22px; font-size: 11px; color: var(--muted, inherit); opacity: .75; white-space: nowrap; }
+.bars + details { margin-top: 30px; }
+/* Money: this font's fixed-width figures widen the decimal comma ("86 , 65 €"), so amounts use normal figures. */
+.money, .admin-table .num, .totals .money { font-variant-numeric: normal; }
+.plan-option .tag { align-self: flex-start; }

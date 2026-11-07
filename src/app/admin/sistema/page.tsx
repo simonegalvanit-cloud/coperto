@@ -11,6 +11,7 @@ export default async function AdminSystem() {
   const env = (name: string) => !!process.env[name];
   const checks: { label: string; ok: boolean; fix: string }[] = [
     { label: "Database raggiungibile e aggiornato", ok: health.ok, fix: health.message },
+    { label: "Pagamenti (Stripe)", ok: env("STRIPE_SECRET_KEY") && env("STRIPE_WEBHOOK_SECRET"), fix: "Imposta STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET su Vercel: senza, nessuno può abbonarsi e i ricavi restano a zero." },
     { label: "Invio email (Resend)", ok: env("RESEND_API_KEY") && env("EMAIL_FROM"), fix: "Imposta RESEND_API_KEY ed EMAIL_FROM su Vercel: senza, nessuna email parte (conferme, promemoria, inviti, password)." },
     { label: "Indirizzo del sito (APP_URL)", ok: env("APP_URL") || env("VERCEL_PROJECT_PRODUCTION_URL"), fix: "Imposta APP_URL con l’indirizzo del sito: serve per i link nelle email." },
     { label: "Protezione del lavoro mattutino (CRON_SECRET)", ok: env("CRON_SECRET"), fix: "Imposta CRON_SECRET (un testo lungo e casuale): così solo Vercel può avviare promemoria e pulizia." },

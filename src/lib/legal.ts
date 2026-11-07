@@ -11,8 +11,8 @@ export const COMPANY = {
 };
 
 /** Bump when the Terms of Service or the data processing agreement change: owners are asked to accept again. */
-export const TERMS_VERSION = "2026-11-05";
-export const TERMS_DATE = "5 novembre 2026";
+export const TERMS_VERSION = "2026-11-07";
+export const TERMS_DATE = "7 novembre 2026";
 
 /** Where Coperto's service providers keep data (sub-processors), as listed in the DPA and privacy policy. */
 export const SUBPROCESSORS = [

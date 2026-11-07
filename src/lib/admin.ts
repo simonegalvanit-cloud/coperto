@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { asc, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { isAdmin } from "./admin-emails";
+import { billingState, isPlan, monthlyValue, PLANS } from "./billing";
 import { getCurrentUser } from "./auth";
 
 export { isAdmin };
@@ -72,6 +73,13 @@ export async function listRestaurants(q: string, limit = 100) {
       createdAt: r.createdAt,
       bookingOpen: r.bookingOpen,
       termsAccepted: sql<boolean>`${r.termsVersion} is not null`,
+      trialEndsAt: r.trialEndsAt,
+      plan: r.plan,
+      billingInterval: r.billingInterval,
+      subscriptionStatus: r.subscriptionStatus,
+      currentPeriodEnd: r.currentPeriodEnd,
+      cancelAtPeriodEnd: r.cancelAtPeriodEnd,
+      compUntil: r.compUntil,
       ownerName: u.name,
       ownerEmail: u.email,
       team: sql<number>`(select count(*)::int from ${schema.members} m where m.restaurant_id = ${r.id})`,
@@ -191,4 +199,95 @@ export async function systemCounts() {
     db.select({ n: sql<number>`count(*)::int` }).from(schema.guestTokens).where(gte(schema.guestTokens.expiresAt, now)),
   ]);
   return { sessions: sessions.n, tablets: tablets.n, resets: resets.n, guestLinks: guestLinks.n };
+}
+
+// ---------- Revenue ----------
+
+/**
+ * Where the money stands, from the restaurants' subscriptions (what's recurring) and Stripe's invoices (what
+ * was actually collected). Amounts in cents, before IVA.
+ */
+export async function revenue() {
+  const db = await getDb();
+  const r = schema.restaurants;
+  const p = schema.payments;
+  const [rows, months, recent, [totals]] = await Promise.all([
+    db
+      .select({
+        id: r.id,
+        name: r.name,
+        createdAt: r.createdAt,
+        trialEndsAt: r.trialEndsAt,
+        plan: r.plan,
+        billingInterval: r.billingInterval,
+        subscriptionStatus: r.subscriptionStatus,
+        currentPeriodEnd: r.currentPeriodEnd,
+        cancelAtPeriodEnd: r.cancelAtPeriodEnd,
+        compUntil: r.compUntil,
+      })
+      .from(r),
+    db.execute<{ month: string; net: number; tax: number; count: number }>(sql`
+      select to_char(date_trunc('month', created_at at time zone 'Europe/Rome'), 'YYYY-MM') as month,
+             sum(amount_net)::int as net, sum(amount_tax)::int as tax, count(*)::int as count
+      from ${p} where status = 'paid' and created_at > now() - interval '12 months'
+      group by 1 order by 1
+    `),
+    db.select().from(p).orderBy(desc(p.createdAt)).limit(50),
+    db.execute<{ all_net: number; failed: number }>(sql`
+      select coalesce(sum(amount_net) filter (where status = 'paid'), 0)::int as all_net,
+             count(*) filter (where status = 'failed')::int as failed
+      from ${p}
+    `),
+  ]);
+  const now = new Date();
+  const byState = { trial: 0, comp: 0, active: 0, past_due: 0, expired: 0 };
+  const byPlan: Record<string, { count: number; mrr: number }> = { banco: { count: 0, mrr: 0 }, sala: { count: 0, mrr: 0 } };
+  let mrr = 0;
+  // Counted from the real prices: twelve times a rounded monthly figure would be off by a few cents.
+  let arr = 0;
+  let cancelling = 0;
+  let trialsEnded90 = 0;
+  let converted90 = 0;
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 86_400_000);
+  for (const x of rows) {
+    const s = billingState(x, now);
+    byState[s.kind]++;
+    if (s.kind === "active" || s.kind === "past_due") {
+      const value = monthlyValue(x.plan, x.billingInterval);
+      mrr += value;
+      arr += isPlan(x.plan) ? (x.billingInterval === "year" ? PLANS[x.plan].year : PLANS[x.plan].month * 12) : 0;
+      byPlan[s.plan].count++;
+      byPlan[s.plan].mrr += value;
+      if (s.kind === "active" && s.cancelling) cancelling++;
+    }
+    if (x.trialEndsAt < now && x.trialEndsAt > ninetyDaysAgo) {
+      trialsEnded90++;
+      if (x.subscriptionStatus) converted90++;
+    }
+  }
+  return {
+    mrr,
+    arr,
+    byState,
+    byPlan,
+    cancelling,
+    canceled: rows.filter((x) => x.subscriptionStatus === "canceled").length,
+    trialsEnded90,
+    converted90,
+    months: months.map((m) => ({ month: m.month, net: Number(m.net), tax: Number(m.tax), count: Number(m.count) })),
+    recent,
+    collectedAllTime: Number(totals.all_net),
+    failedCount: Number(totals.failed),
+  };
+}
+
+/** Payments for the accountant, with the invoice details an Italian e-invoice needs. */
+export async function paymentsForYear(year: number) {
+  const db = await getDb();
+  const p = schema.payments;
+  return db
+    .select()
+    .from(p)
+    .where(sql`extract(year from ${p.createdAt} at time zone 'Europe/Rome') = ${year}`)
+    .orderBy(p.createdAt);
 }

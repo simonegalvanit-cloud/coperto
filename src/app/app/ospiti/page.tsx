@@ -3,6 +3,8 @@ import Link from "next/link";
 import { and, count, desc, eq, ilike, isNotNull, isNull, or } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { requireAccount } from "@/lib/auth";
+import { hasSalaFeatures } from "@/lib/billing";
+import { SalaOnly } from "@/components/SalaOnly";
 import { can } from "@/lib/roles";
 import { formatPhone, normalizePhone } from "@/lib/contact";
 import { guestCounts } from "@/lib/guests";
@@ -14,6 +16,7 @@ const PAGE = 100;
 
 export default async function GuestsPage({ searchParams }: PageProps<"/app/ospiti">) {
   const { restaurant, role } = await requireAccount();
+  if (!hasSalaFeatures(restaurant)) return <SalaOnly feature="Le schede ospite" owner={can(role, "account")} />;
   const admin = can(role, "guests");
   const q = String((await searchParams).q ?? "").trim().slice(0, 80);
 

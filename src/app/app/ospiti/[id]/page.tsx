@@ -8,6 +8,8 @@ import type { Reservation } from "@/db/schema";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { requireAccount } from "@/lib/auth";
+import { hasSalaFeatures } from "@/lib/billing";
+import { SalaOnly } from "@/components/SalaOnly";
 import { can } from "@/lib/roles";
 import { formatPhone } from "@/lib/contact";
 import { guestCounts } from "@/lib/guests";
@@ -30,6 +32,7 @@ const when = (d: Date) => new Intl.DateTimeFormat("it-IT", { dateStyle: "medium"
 
 export default async function GuestPage({ params }: PageProps<"/app/ospiti/[id]">) {
   const { restaurant, role } = await requireAccount();
+  if (!hasSalaFeatures(restaurant)) return <SalaOnly feature="Le schede ospite" owner={can(role, "account")} />;
   const id = z.uuid().safeParse((await params).id);
   if (!id.success) notFound();
   const db = await getDb();

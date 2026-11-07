@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -89,8 +90,65 @@ export const restaurants = pgTable("restaurants", {
   // When the owner accepted the Terms of Service and the data processing agreement, and which version.
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
   termsVersion: text("terms_version"),
+
+  // ---- Subscription ----
+  // Free until this moment; set to 14 days after signup (and 14 days from the update for restaurants that existed).
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }).notNull().default(sql`now() + interval '14 days'`),
+  // "banco" | "sala" | "gruppo": the plan paid for (null while on trial without choosing).
+  plan: text("plan"),
+  // "month" | "year"
+  billingInterval: text("billing_interval"),
+  // Stripe's own status of the subscription ("active", "past_due", "canceled", …); null: never subscribed.
+  subscriptionStatus: text("subscription_status"),
+  stripeCustomerId: text("stripe_customer_id").unique(),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  // Free access granted by Coperto (a pilot restaurant, a deal) until this moment, and why.
+  compUntil: timestamp("comp_until", { withTimezone: true }),
+  compNote: text("comp_note").notNull().default(""),
+  trialReminderSentAt: timestamp("trial_reminder_sent_at", { withTimezone: true }),
+  trialEndedNoticeAt: timestamp("trial_ended_notice_at", { withTimezone: true }),
+  // What an Italian e-invoice needs.
+  billingName: text("billing_name").notNull().default(""),
+  billingVat: text("billing_vat").notNull().default(""),
+  billingTaxCode: text("billing_tax_code").notNull().default(""),
+  billingAddress: text("billing_address").notNull().default(""),
+  billingSdi: text("billing_sdi").notNull().default(""),
+  billingPec: text("billing_pec").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Every subscription invoice Stripe reports, paid or failed: the source of the revenue figures. Amounts in cents. */
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    restaurantId: uuid("restaurant_id").references(() => restaurants.id, { onDelete: "set null" }),
+    // Kept even if the restaurant is deleted: invoices must be kept for 10 years.
+    restaurantName: text("restaurant_name").notNull(),
+    stripeInvoiceId: text("stripe_invoice_id").notNull().unique(),
+    number: text("number").notNull().default(""),
+    status: text("status").notNull(),
+    plan: text("plan").notNull().default(""),
+    interval: text("interval").notNull().default(""),
+    amountNet: integer("amount_net").notNull(),
+    amountTax: integer("amount_tax").notNull(),
+    amountTotal: integer("amount_total").notNull(),
+    currency: text("currency").notNull().default("eur"),
+    periodStart: timestamp("period_start", { withTimezone: true }),
+    periodEnd: timestamp("period_end", { withTimezone: true }),
+    invoiceUrl: text("invoice_url").notNull().default(""),
+    billingName: text("billing_name").notNull().default(""),
+    billingVat: text("billing_vat").notNull().default(""),
+    billingTaxCode: text("billing_tax_code").notNull().default(""),
+    billingAddress: text("billing_address").notNull().default(""),
+    billingSdi: text("billing_sdi").notNull().default(""),
+    billingPec: text("billing_pec").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("payments_created_idx").on(t.createdAt), index("payments_restaurant_idx").on(t.restaurantId)],
+);
 
 // Titolare (the owner who pays: everything), Responsabile (runs the place: everything but the account and
 // other managers), Sala (bookings, room, waitlist, guests).

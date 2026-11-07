@@ -83,6 +83,27 @@ team. On the tablet the owner works as a manager (no deleting or exporting the r
 
 Every booking entered by staff records who entered it ("Inserita da Luca").
 
+### Subscriptions (Stripe)
+
+14 days free without a card, then Banco (19,99 €/month) or Sala (39,99 €/month), or yearly with two months free, all
+plus 22% IVA. The owner picks a plan and enters invoice details (ragione sociale, P.IVA, sede, codice SDI or PEC) at
+`/app/abbonamento`, pays on Stripe's page, and later manages card, plan, invoices and cancellation from Stripe's portal.
+Prices and the IVA rate are created in Stripe automatically on first use. Subscribing during the trial saves the card;
+the first charge comes when the trial ends.
+
+- **Soft block**: when the trial or the subscription ends, online bookings pause (guests see bookings closed) and the app
+  shows a banner; staff keep working and nothing is deleted. A failed payment keeps everything running while Stripe
+  retries, with an email and a banner for the owner.
+- **Banco** hides the floor plan and guest profiles (and "Ricordati di me"); Sala has everything.
+- Emails 3 days before the trial ends and when it ends (morning job).
+- Stripe's invoices are not Italian e-invoices: connect an e-invoicing service to Stripe, or give the accountant the
+  payments CSV from the admin panel (it has the SDI/PEC details).
+
+Stripe setup: create the account, then in **Developers → Webhooks** add an endpoint `https://<your-site>/api/stripe/webhook`
+with the events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`,
+`customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`; put its signing secret and your secret key in
+Vercel. In **Settings → Billing → Customer portal**, save the default settings once (and allow switching between the four prices).
+
 ### Admin panel (Coperto's own back office)
 
 `/admin`, for the Coperto accounts whose email is in `ADMIN_EMAILS` (an "Admin" button appears in their app header).
@@ -132,6 +153,8 @@ and emails are printed in the terminal instead of being sent.
 | `EMAIL_FROM` | e.g. `Coperto <prenotazioni@tuodominio.it>` |
 | `APP_URL` | Your public address, e.g. `https://coperto.it` |
 | `CRON_SECRET` | Any long random text: only Vercel's morning job can then trigger reminders and the privacy cleanup |
+| `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_…` while testing, `sk_live_…` for real): subscriptions and payments |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret of the webhook pointing at `https://<your-site>/api/stripe/webhook` (`whsec_…`) |
 | `CAREERS_EMAIL` | Where applications from "Lavora con noi" are emailed, CV attached (optional: they're also saved) |
 | `ADMIN_EMAILS` | Comma-separated emails of Coperto accounts that may read applications at `/admin/candidature` |
 
